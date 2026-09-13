@@ -1,6 +1,6 @@
 // 应用状态（阶段 0：reactive 单例；store 数量增长后迁 Pinia——规约 §一 迁移成本注释）
 import { reactive } from 'vue'
-import { setLocale, type Locale } from './i18n'
+import { setLocale, t, type Locale } from './i18n'
 
 export type Route = 'sites' | 'php' | 'mysql' | 'pgsql' | 'redis' | 'nginx' | 'go'
   | 'backup' | 'offline' | 'settings' | 'overview'
@@ -62,18 +62,41 @@ export function toastBus(msg: string, kind: 'ok' | 'err' | 'info', ttl = 3200) {
   window.dispatchEvent(new CustomEvent('phpbox:toast', { detail: { msg, kind, ttl } }))
 }
 
-export function runTask(label: string, cli: string, steps: Step[], opts: { doneMsg?: string; onDone?: () => void } = {}): boolean {
+// 任务原语：真实链路（src/api/task.ts 事件订阅）与模拟链路（runTask）共用
+export function startTask(label: string, cli: string): boolean {
   if (state.task && state.task.phase === 'running') return false // 单队列（§2.3）
-  const lines: TaskLine[] = [{ t: '$ ' + cli, c: 'cmd' }]
-  state.task = { label, cli, lines, phase: 'running' }
+  state.task = { label, cli, lines: [{ t: '$ ' + cli, c: 'cmd' }], phase: 'running' }
+  return true
+}
+export function pushTaskLine(line: string, cls?: TaskLine['c']): void {
+  const task = state.task
+  if (!task || task.phase !== 'running') return
+  task.lines.push(cls === undefined ? classify(line) : { t: line, c: cls })
+}
+export function finishTask(phase: 'success' | 'failed', opts: { doneMsg?: string; onDone?: () => void } = {}): void {
+  const task = state.task
+  if (!task || task.phase !== 'running') return
+  task.phase = phase
+  if (phase === 'success') {
+    toastBus(opts.doneMsg || t('task.done') + ': ' + task.label, 'ok')
+    if (opts.onDone) opts.onDone()
+  } else {
+    toastBus(t('task.failed') + ': ' + task.label, 'err')
+  }
+}
+export function clearTask(): void { state.task = null }
+export function taskRunning(): boolean {
+  return !!state.task && state.task.phase === 'running'
+}
+
+export function runTask(label: string, cli: string, steps: Step[], opts: { doneMsg?: string; onDone?: () => void } = {}): boolean {
+  if (!startTask(label, cli)) return false
   let i = 0
   const next = () => {
     const task = state.task
     if (!task || task.phase !== 'running') return
     if (i >= steps.length) {
-      task.phase = 'success'
-      toastBus(opts.doneMsg || '任务完成: ' + label, 'ok')
-      if (opts.onDone) opts.onDone()
+      finishTask('success', opts)
       return
     }
     const st = steps[i++]

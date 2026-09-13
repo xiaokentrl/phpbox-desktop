@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 应用壳 + 视图路由（阶段 0：内联视图；§22.1 晋升制——复用时抽组件）
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t, locale, setAppLocale, type Locale } from './i18n'
-import { state, setRoute, setTheme, initTheme, runTask, toastBus, type Route, type ContainerRow } from './state'
+import { state, setRoute, setTheme, initTheme, clearTask, taskRunning, toastBus, type Route, type ContainerRow } from './state'
+import { dispatchTask } from './api/task'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
@@ -64,8 +65,32 @@ async function loadContainers() {
 }
 onMounted(() => { initTheme(); loadContainers() })
 
-// ── 任务抽屉 ──
+// ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
 const drawerCollapsed = ref(false)
+const drawerLogEl = ref<HTMLElement | null>(null)
+const taskPhaseLabel = computed(() => state.task
+  ? state.task.phase === 'running' ? t('task.running')
+    : state.task.phase === 'success' ? t('task.success') : t('task.failed')
+  : '')
+watch(() => state.task?.lines.length, async () => { // 新日志行 → 滚到底部
+  if (drawerCollapsed.value) return
+  await nextTick()
+  if (drawerLogEl.value) drawerLogEl.value.scrollTop = drawerLogEl.value.scrollHeight
+})
+
+// 环境诊断：真实链路 spawn `phpbox list`（只读、安全、输出稳定）
+function runDiagnostics() {
+  const ok = dispatchTask(t('task.diag.label'), 'phpbox list', ['list'], {
+    doneMsg: t('task.diag.done'),
+    fallback: [ // 浏览器降级演示（§13）
+      { d: 400, lines: ['[INFO] 检查 Docker Engine…'] },
+      { d: 500, lines: ['[OK]   Docker Engine 已连接', '[OK]   Compose 配置可解析'] },
+      { d: 350, lines: ['[INFO] 已安装服务：php 8.4/8.2/8.0/7.4 · mysql 8.4/8.0/5.7 · nginx alpine'] },
+    ],
+    onDone: () => { loadContainers() },
+  })
+  if (!ok) toastBus(t('task.busy'), 'err')
+}
 
 // ── 事件委托（站点切换等）──
 function onSiteSwitch(e: Event, domain: string) {
@@ -76,7 +101,7 @@ function onSiteSwitch(e: Event, domain: string) {
   toastBus(t('toast.switching'), 'info', 1500)
   setTimeout(() => {
     site.php = old; sel.disabled = false; sel.value = old
-    toastBus('演示：切换失败已回滚', 'err', 3000)
+    toastBus(t('toast.demoRollback'), 'err', 3000)
   }, 1500)
 }
 </script>
@@ -153,7 +178,10 @@ function onSiteSwitch(e: Event, domain: string) {
           <!-- ═══ 总览（真实 Docker 数据）═══ -->
           <template v-else-if="state.route === 'overview'">
             <header class="view-header"><div><h1>{{ t('overview.title') }}</h1><p class="view-sub">{{ t('overview.sub') }}</p></div>
-              <div class="header-actions"><button class="btn" @click="loadContainers">{{ t('btn.refresh') }}</button></div></header>
+              <div class="header-actions">
+                <button class="btn" :disabled="taskRunning()" @click="runDiagnostics">⚙ {{ t('overview.diag') }}</button>
+                <button class="btn" @click="loadContainers">{{ t('btn.refresh') }}</button>
+              </div></header>
             <p v-if="dockerErr" class="alert alert-danger">{{ dockerErr }}</p>
             <div v-else class="summary">
               <div class="summary-item"><div class="summary-num">{{ containers.length }}</div><div class="summary-label">Containers</div></div>
@@ -207,7 +235,7 @@ function onSiteSwitch(e: Event, domain: string) {
 
         </div>
       </div>
-      <!-- 任务抽屉 -->
+      <!-- 任务抽屉：真实 phpbox CLI 输出流（task:log/task:done 事件驱动）-->
       <section class="drawer" :class="{ collapsed: drawerCollapsed }" v-if="state.task">
         <header class="drawer-head">
           <div class="drawer-left">
@@ -216,11 +244,12 @@ function onSiteSwitch(e: Event, domain: string) {
             <span class="drawer-cmd">$ {{ state.task.cli }}</span>
           </div>
           <div class="drawer-right">
-            <span class="drawer-status">{{ state.task.phase === 'running' ? '进行中…' : state.task.phase === 'success' ? '成功 ✓' : '失败' }}</span>
+            <span class="drawer-status">{{ taskPhaseLabel }}</span>
+            <button class="icon-btn" v-if="state.task.phase !== 'running'" :title="t('task.close')" @click="clearTask()">✕</button>
             <button class="icon-btn" @click="drawerCollapsed = !drawerCollapsed">{{ drawerCollapsed ? '▲' : '▼' }}</button>
           </div>
         </header>
-        <pre class="drawer-log">{{ state.task.lines.map(l => l.t).join('\n') }}</pre>
+        <div class="drawer-log" ref="drawerLogEl"><div v-for="(l, i) in state.task.lines" :key="i" class="log-line" :class="l.c">{{ l.t }}</div></div>
       </section>
     </main>
     <div class="toast-root">
