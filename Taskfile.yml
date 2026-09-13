@@ -1,0 +1,16 @@
+version: '3'
+
+tasks:
+  engine:build:
+    desc: 构建引擎 CLI（phpboxd）
+    cmds: [go build -o bin/phpboxd ./cmd/phpboxd]
+  engine:list:
+    desc: 列出容器（引擎 POC）
+    cmds: [go run ./cmd/phpboxd list]
+  purity:
+    desc: 引擎零依赖检查（engine 禁止 import 壳层）
+    cmds:
+      - go list -deps ./internal/engine/... | grep -i wails && exit 1 || exit 0
+  test:
+    desc: 全部测试
+    cmds: [go test ./...]

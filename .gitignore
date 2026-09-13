@@ -1,0 +1,15 @@
+# Go
+phpboxd/
+*.test
+*.out
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# Wails 构建产物
+build/bin/
+
+# 系统/编辑器
+.DS_Store
+*.log
