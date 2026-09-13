@@ -10,7 +10,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-//go:embed build/appicon.png
+//go:embed build/trayicon.png
+// 32×32 专用托盘图标：GNOME appindicator 对大尺寸 IconPixmap（如 1024px）不渲染
 var trayIcon []byte
 
 func setupTray(app *application.App, win *application.WebviewWindow) {
