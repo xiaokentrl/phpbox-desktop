@@ -48,8 +48,25 @@ func TestList(t *testing.T) {
 	if byDomain["shop.test"].PHP != "php84" {
 		t.Errorf("shop.test upstream 解析错误: %+v", byDomain["shop.test"])
 	}
-	if byDomain["legacy.test"].Root != "/var/www/legacy.test" {
+	// root 契约：容器 /var/www/<域名> 映射回宿主 ~/www/<域名>（WWW_ROOT 默认值）
+	if byDomain["legacy.test"].Root != "~/www/legacy.test" {
 		t.Errorf("root 行解析错误: %+v", byDomain["legacy.test"])
+	}
+}
+
+func TestListCustomRoot(t *testing.T) {
+	// 用户手改 vhost root 到非 /var/www 前缀：原样保留，不臆造映射
+	dir := t.TempDir()
+	conf := "server { fastcgi_pass php80:9000; root /srv/custom; }"
+	if err := os.WriteFile(filepath.Join(dir, "custom.test.conf"), []byte(conf), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := List(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("自定义 root 站点应能解析: %v %+v", err, entries)
+	}
+	if entries[0].Root != "/srv/custom" {
+		t.Errorf("非 /var/www 前缀的 root 应原样返回: %+v", entries[0])
 	}
 }
 

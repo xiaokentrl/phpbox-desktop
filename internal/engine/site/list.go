@@ -50,6 +50,7 @@ func List(sitesDir string) ([]Entry, error) {
 		}
 		conf := string(data)
 		domain := strings.TrimSuffix(it.Name(), ".conf")
+		// 容器内 root（/var/www/<域名>）映射回宿主 WWW_ROOT/<域名>（引擎读不到 .env 时用默认 ~/www）
 		e := Entry{Domain: domain, Root: "~/www/" + domain}
 		if m := upstreamRe.FindStringSubmatch(conf); m != nil {
 			e.PHP = m[1]
@@ -57,7 +58,7 @@ func List(sitesDir string) ([]Entry, error) {
 			e.PHP = m[1]
 		}
 		if m := rootRe.FindStringSubmatch(conf); m != nil {
-			e.Root = m[1]
+			e.Root = hostRoot(m[1])
 		}
 		out = append(out, e)
 	}
@@ -65,7 +66,19 @@ func List(sitesDir string) ([]Entry, error) {
 	return out, nil
 }
 
-// HostsResolved 检查域名是否在 /etc/hosts 中指向 127.0.0.1（与 bash _hosts_add 同判定）。
+// hostRoot 把 vhost 里的容器路径映射回宿主路径。
+// bash 契约：WWW_ROOT（默认 ~/www）挂载到容器 /var/www，站点目录为 WWW_ROOT/<域名>。
+// 阶段 0 路径硬编码用默认值；vhost 中出现其他路径（用户手改）时原样返回，不臆造映射。
+func hostRoot(root string) string {
+	const containerPrefix = "/var/www/"
+	if strings.HasPrefix(root, containerPrefix) {
+		return "~/www/" + strings.TrimPrefix(root, containerPrefix)
+	}
+	return root
+}
+
+// HostsResolved 检查域名是否在 /etc/hosts 中指向 127.0.0.1
+// （与 bash _hosts_add/_hosts_list 同判定：只认 127.0.0.1 行，::1 不算命中）。
 func HostsResolved(domain string) bool {
 	data, err := os.ReadFile("/etc/hosts")
 	if err != nil {
@@ -77,7 +90,7 @@ func HostsResolved(domain string) bool {
 			continue
 		}
 		fields := strings.Fields(ln)
-		if len(fields) >= 2 && (fields[0] == "127.0.0.1" || fields[0] == "::1") {
+		if len(fields) >= 2 && fields[0] == "127.0.0.1" {
 			for _, f := range fields[1:] {
 				if f == domain {
 					return true

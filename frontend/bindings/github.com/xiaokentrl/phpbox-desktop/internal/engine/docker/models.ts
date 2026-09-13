@@ -15,4 +15,14 @@ export interface ContainerSummary {
      * running / exited / paused ...
      */
     "State": string;
+
+    /**
+     * phpbox-service label（如 php/mysql；非 phpbox 容器为空）
+     */
+    "Service": string;
+
+    /**
+     * phpbox-version label（如 8.4；php 线含点，与 compose 分片名一致）
+     */
+    "Version": string;
 }

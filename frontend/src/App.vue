@@ -6,6 +6,7 @@ import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunn
   openInstall, openDanger, openExt, openSiteModal, closeModal, type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { Events } from '@wailsio/runtime'
+import { cmpVerDesc } from './utils'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
@@ -104,8 +105,7 @@ function confirmInstall() {
     doneMsg: t('task.done'),
     fallback: [{ d: 400, lines: ['[INFO] 演示环境：安装流程模拟输出'] }],
     onDone: () => {
-      if (v && !svcVersions(m.svc).includes(v)) ((state.installed as Record<string, string[]>)[m.svc] ??= []).push(v)
-      loadContainers()
+      loadContainers() // installed 由容器 labels 重新派生（真实状态，无乐观拼接）
     },
   })
 }
@@ -167,9 +167,7 @@ function openUninstallModal(kind: string, ver: string) {
         doneMsg: t('task.done'),
         fallback: [{ d: 400, lines: ['[INFO] 演示环境：卸载流程模拟输出'] }],
         onDone: () => {
-          const list = (state.installed as Record<string, string[]>)[kind]
-          if (list) { const i = list.indexOf(ver); if (i >= 0) list.splice(i, 1) }
-          loadContainers()
+          loadContainers() // installed 由容器 labels 重新派生（真实状态，无乐观删减）
         },
       })
     },
@@ -186,14 +184,28 @@ window.addEventListener('phpbox:toast', (e) => {
   setTimeout(() => { toasts.value = toasts.value.filter(x => x.id !== id) }, d.ttl || 3200)
 })
 
-// ── Docker 真实数据 ──
+// ── Docker 真实数据 + installed 派生 ──
 const containers = ref<ContainerSummary[]>([])
 const dockerErr = ref('')
 async function refreshContainers() { loadContainers() }
 async function loadContainers() {
   dockerErr.value = ''
-  try { containers.value = (await ListContainers()) ?? [] }
-  catch (e) { dockerErr.value = String(e) }
+  try {
+    const rows = (await ListContainers()) ?? []
+    containers.value = rows
+    // installed 与 bash cmd_list 同源：phpbox-service/phpbox-version labels。
+    // 缺 label 的容器（非 phpbox 管理）不纳入；Docker 不可达时保持上次列表。
+    const map: Record<string, Set<string>> = {}
+    for (const c of rows) {
+      if (!c.Service) continue
+      // nginx 单实例无 version label：回退真实镜像 tag（nginx:alpine → alpine）
+      ;(map[c.Service] ??= new Set()).add(c.Version || c.Image.split(':')[1] || '?')
+    }
+    state.installed = {}
+    for (const [svc, set] of Object.entries(map)) {
+      state.installed[svc] = [...set].sort(cmpVerDesc)
+    }
+  } catch (e) { dockerErr.value = String(e) }
 }
 onMounted(() => {
   initTheme(); loadContainers()
@@ -463,9 +475,12 @@ const siteModal = computed(() => state.modal?.kind === 'site' ? state.modal : nu
 const siteDomain = ref('')
 const sitePhp = ref('')
 const siteErr = ref('')
-const DOMAIN_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/
+// 域名校验对齐 bash _valid_domain：每段以字母数字开头结尾，点分段可有零段（允许 localhost 等单段域名）
+const DOMAIN_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/
 const installedPhp = computed(() => (state.installed as Record<string, string[]>).php ?? [])
 const phpVerToKey = (v: string) => 'php' + v.replace(/\./g, '')  // 8.4 → php84（bash 服务键）
+// 服务键 → 展示名（php84 → 8.4；未知键原样展示）
+const phpKeyLabel = (k: string) => installedPhp.value.find(v => phpVerToKey(v) === k) ?? k
 
 async function loadSites() {
   if (!inWails()) return // 浏览器降级：保留空列表
@@ -501,7 +516,10 @@ function onSiteSwitch(e: Event, domain: string) {
   const site = state.sites.find(s => s.domain === domain)
   const oldKey = site?.php ?? ''
   if (!site || oldKey === sel.value || !sel.value) return
-  const ver = sel.value.replace(/^php/, '')
+  // 服务键 php84 → 版本号 8.4：不能简单去前缀（php84 去掉 php 是 84，丢了点号，
+  // bash 侧 label 匹配 phpbox-version=8.4 必失败）——从已安装版本表反查唯一前缀匹配
+  const ver = installedPhp.value.find(v => phpVerToKey(v) === sel.value)
+  if (!ver) return
   dispatchTask(`${t('site.switchTask')}·${domain}`, `phpbox site switch ${domain} --php ${ver}`,
     ['site', 'switch', domain, '--php', ver], {
     fallback: [{ d: 400, lines: [`[INFO] 演示环境：phpbox site switch ${domain} --php ${ver}`] }],
@@ -717,6 +735,10 @@ function initTrayNav() {
                   <td><a class="site-domain" :href="'http://'+s.domain" target="_blank" rel="noopener"><span class="favicon">{{ s.domain[0].toUpperCase() }}</span>{{ s.domain }}</a></td>
                   <td><select class="php-select" :value="s.php" @change="onSiteSwitch($event, s.domain)">
                     <option v-for="v in installedPhp" :key="v" :value="phpVerToKey(v)" :selected="phpVerToKey(v)===s.php">{{ v }}</option>
+                    <!-- 站点绑定的 PHP 已卸载：保留选项并标记（诚实呈现，切换它会被 CLI 拒绝） -->
+                    <option v-if="!installedPhp.some(v => phpVerToKey(v) === s.php)" :value="s.php" selected>
+                      {{ t('site.phpUninstalled', { ver: phpKeyLabel(s.php) }) }}
+                    </option>
                   </select></td>
                   <td><span class="mono dim">{{ s.root }}</span></td>
                   <td>

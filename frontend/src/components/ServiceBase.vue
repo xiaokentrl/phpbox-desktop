@@ -58,9 +58,7 @@ function openUninstallModal(ver: string) {
         doneMsg: t('task.done'),
         fallback: [{ d: 400, lines: ['[INFO] 演示环境：卸载流程模拟输出'] }],
         onDone: () => {
-          const list = (state.installed as Record<string, string[]>)[svc]
-          if (list) { const i = list.indexOf(ver); if (i >= 0) list.splice(i, 1) }
-          loadContainers()
+          loadContainers() // installed 由容器 labels 重新派生（真实状态，无乐观删减）
         },
       })
     },

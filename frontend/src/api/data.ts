@@ -1,6 +1,7 @@
 // 数据加载层：各 Wails 绑定 → state 单例。视图与壳只调用，不直接碰绑定。
 import { inWails, onWailsReady } from './task'
 import { state, toastBus, type OfflineRow, type SiteEntry, type GoProjectRow, type BackupRow, type EnvRow } from '../state'
+import { cmpVerDesc } from '../utils'
 import { ListContainers } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ListOfflineCache } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
@@ -8,11 +9,24 @@ import { ListSites } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/i
 import { ListGoProjects } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { ReadEnv } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 
-// 容器列表（总览/服务线/Go 状态共用的真实数据源）
+// 容器列表（总览/服务线/Go 状态共用的真实数据源）+ installed 派生
+// installed 与 bash cmd_list 同源：phpbox-service/phpbox-version labels（缺 label 的容器不纳入）
 export async function loadContainers() {
   state.dockerErr = ''
-  try { state.containers = (await ListContainers()) ?? [] }
-  catch (e) { state.dockerErr = String(e) }
+  try {
+    const rows = (await ListContainers()) ?? []
+    state.containers = rows
+    const map: Record<string, Set<string>> = {}
+    for (const c of rows) {
+      if (!c.Service) continue
+      // nginx 单实例无 version label：回退真实镜像 tag（nginx:alpine → alpine），不假设默认值
+      ;(map[c.Service] ??= new Set()).add(c.Version || c.Image.split(':')[1] || '?')
+    }
+    state.installed = {}
+    for (const [svc, set] of Object.entries(map)) {
+      state.installed[svc] = [...set].sort(cmpVerDesc)
+    }
+  } catch (e) { state.dockerErr = String(e) }
 }
 
 export async function loadBackups() {

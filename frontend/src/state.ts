@@ -65,10 +65,12 @@ export const state = reactive({
     NGINX_PORT: '80', NGINX_VERSION: 'alpine',
     GO_PROJECTS_ROOT: '~/www', GO_PROXY: 'https://goproxy.cn,direct',
   } as Record<string, string>,
-  // 真实数据：经 Site 绑定解析 config/nginx/sites/*.vhost 加载
+  // 真实数据：经 Site 绑定解析 config/nginx/sites/*.conf 加载
   sites: [] as SiteEntry[],
-  containers: [] as ContainerSummary[], // 真实 Docker API（总览/服务线/Go 共用）
-  installed: { php:['8.4','8.2','8.0','7.4'], mysql:['8.4','8.0','5.7'], pgsql:['17'], redis:['8'], nginx:['alpine'] } as Record<string, string[]>,
+  containers: [] as ContainerSummary[], // 真实 Docker API（总览/服务线/Go 共用；installed 的派生源）
+  // 已安装服务线：从真实容器 phpbox-service/phpbox-version labels 派生（与 bash cmd_list 同源），
+  // 由 loadContainers 刷新；不在容器里的版本不出现（诚实降级：Docker 不可达时各服务线显示空态）
+  installed: {} as Record<string, string[]>,
   // 真实数据：经 Backup 绑定扫描 ~/phpbox/backups/ 加载
   backups: [] as BackupRow[],
   // 真实数据：经 Offline 绑定扫描 ~/phpbox/offline/ 加载
