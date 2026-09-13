@@ -7,6 +7,8 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"regexp"
+	"strings"
 	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -26,13 +28,20 @@ type TaskEvent struct {
 
 func classify(line string) TaskEvent {
 	switch {
-	case len(line) >= 4 && line[:4] == "[OK]":
+	case strings.HasPrefix(line, "[OK]"):
 		return TaskEvent{Line: line, Cls: "ok"}
-	case len(line) >= 5 && line[:5] == "[ERR]":
+	case strings.HasPrefix(line, "[ERR]"):
 		return TaskEvent{Line: line, Cls: "err"}
 	default:
 		return TaskEvent{Line: line}
 	}
+}
+
+// ansiRe 匹配 ANSI 转义序列（phpbox log() 无条件输出颜色码，非 tty 管道也不关闭）
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripANSI(s string) string {
+	return ansiRe.ReplaceAllString(s, "")
 }
 
 // RunTask spawn bash phpbox CLI 并流式返回输出（事件名 task:log / task:done）。
@@ -62,8 +71,15 @@ func (r *Runner) RunTask(ctx context.Context, args []string) error {
 		for {
 			line, err := rd.ReadString('\n')
 			if line != "" {
-				ev := classify(trimNL(line))
-				app.Event.Emit("task:log", ev)
+				clean := stripANSI(trimNL(line))
+				if clean != "" {
+					ev := classify(clean)
+					app.Event.Emit("task:log", ev)
+				}
+				if err != nil {
+					break
+				}
+				continue
 			}
 			if err != nil {
 				break
