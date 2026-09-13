@@ -35,6 +35,11 @@ export interface InstallModal {
 }
 // 备份归档行（与 Go BackupEntry 对齐：file/path/size/at）
 export interface BackupRow { file: string; path: string; size: number; at: string }
+// PHP 扩展弹窗载荷（真实状态经 Php.ReadPhpExtensions 加载）
+export interface ExtModal {
+  kind: 'ext'
+  version: string
+}
 
 export const state = reactive({
   route: 'sites' as Route,
@@ -56,7 +61,7 @@ export const state = reactive({
   // 真实数据：经 Backup 绑定扫描 ~/phpbox/backups/ 加载
   backups: [] as BackupRow[],
   task: null as Task | null,
-  modal: null as InstallModal | DangerModal | null,
+  modal: null as InstallModal | DangerModal | ExtModal | null,
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
 })
 
@@ -87,6 +92,9 @@ export function openInstall(m: Omit<InstallModal, 'kind'>): void {
 }
 export function openDanger(m: Omit<DangerModal, 'kind'>): void {
   state.modal = { kind: 'danger', ...m }
+}
+export function openExt(m: Omit<ExtModal, 'kind'>): void {
+  state.modal = { kind: 'ext', ...m }
 }
 export function closeModal(): void { state.modal = null }
 

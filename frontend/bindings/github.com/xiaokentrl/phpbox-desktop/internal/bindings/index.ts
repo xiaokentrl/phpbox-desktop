@@ -3,10 +3,12 @@
 
 import * as Backup from "./backup.js";
 import * as Docker from "./docker.js";
+import * as Php from "./php.js";
 import * as Runner from "./runner.js";
 export {
     Backup,
     Docker,
+    Php,
     Runner
 };
 

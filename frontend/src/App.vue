@@ -3,10 +3,11 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
-  openInstall, openDanger, closeModal, type Route, type ContainerRow } from './state'
+  openInstall, openDanger, openExt, closeModal, type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails } from './api/task'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
+import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
@@ -217,7 +218,109 @@ function runDiagnostics() {
   if (!ok) toastBus(t('task.busy'), 'err')
 }
 
-// ── 备份（真实归档列表：Backup 绑定扫描 ~/phpbox/backups/）──
+// ── PHP 扩展管理弹窗（真实状态 + 目标集合 → 逐个 add/remove spawn）──
+const EXT_LIB = ['apcu','memcached','mongodb','amqp','yaml','ssh2','swoole','event','grpc','protobuf','igbinary','msgpack','ds','uv','pthreads']
+const EXT_PRESETS: Record<string, string[]> = {
+  default: ['gd','redis','pdo_mysql','mysqli','pgsql','pdo_pgsql','zip','bcmath','intl','opcache','exif','soap','sockets','imagick'],
+  minimal: ['opcache'],
+  web:     ['gd','redis','pdo_mysql','mysqli','pgsql','pdo_pgsql','zip','bcmath','intl','opcache','exif','soap','sockets','imagick'],
+  debug:   ['gd','redis','pdo_mysql','mysqli','pgsql','pdo_pgsql','zip','bcmath','intl','opcache','exif','soap','sockets','imagick','xdebug'],
+}
+const extModal = computed(() => state.modal?.kind === 'ext' ? state.modal : null)
+const extInstalled = ref<string[]>([])   // extensions.env 真实状态
+const extExtra = ref<string[]>([])       // 本次手动添加
+const extSelected = ref<Set<string>>(new Set())
+const extPreset = ref('')
+const extInput = ref('')
+const extErr = ref('')
+const extLoading = ref(false)
+
+watch(() => state.modal?.kind, async (k) => {
+  if (k !== 'ext') return
+  const m = extModal.value
+  if (!m) return
+  extInstalled.value = []; extExtra.value = []; extSelected.value = new Set()
+  extPreset.value = ''; extInput.value = ''; extErr.value = ''; extLoading.value = true
+  if (!inWails) { // 浏览器降级：演示数据
+    extInstalled.value = [...EXT_PRESETS.debug]
+    extSelected.value = new Set(EXT_PRESETS.debug)
+    extPreset.value = 'debug'
+    extLoading.value = false
+    return
+  }
+  try {
+    const exts = (await ReadPhpExtensions(m.version)) ?? []
+    extInstalled.value = exts
+    extSelected.value = new Set(exts)
+  } catch (e) { extErr.value = String(e) }
+  extLoading.value = false
+})
+
+const extEnabledList = computed(() => [...extInstalled.value, ...extExtra.value])
+const extSuggestList = computed(() =>
+  EXT_LIB.filter(e => !extInstalled.value.includes(e) && !extExtra.value.includes(e)).slice(0, 12))
+// 已知扩展集合：所有列表中出现过的（预设 ∪ 已装 ∪ 库）——目标集合里未知项视为"删除"外的保留项
+const extKnown = computed(() => {
+  const s = new Set<string>([...extInstalled.value, ...extExtra.value, ...EXT_LIB, ...Object.values(EXT_PRESETS).flat()])
+  return s
+})
+const extDirty = computed(() => {
+  const on = extSelected.value
+  const orig = new Set(extInstalled.value)
+  if (on.size !== orig.size) return true
+  for (const e of on) if (!orig.has(e)) return true
+  return false
+})
+const extAdds = computed(() => [...extSelected.value].filter(e => !extInstalled.value.includes(e)))
+const extRemoves = computed(() => extInstalled.value.filter(e => !extSelected.value.has(e)))
+function extToggle(e: string) {
+  const s = new Set(extSelected.value)
+  if (s.has(e)) s.delete(e); else s.add(e)
+  extSelected.value = s
+  extPreset.value = ''
+}
+function extPickPreset(p: string) {
+  extPreset.value = p
+  extSelected.value = new Set(EXT_PRESETS[p] ?? [])
+  // 预设里未知的新扩展也进入 extra，保证 UI 可见
+  for (const e of EXT_PRESETS[p] ?? []) {
+    if (!extInstalled.value.includes(e) && !extExtra.value.includes(e)) extExtra.value.push(e)
+  }
+}
+function extAddManual() {
+  const name = extInput.value.trim()
+  if (!name) return
+  if (!/^[a-zA-Z0-9._-]+$/.test(name)) { toastBus(t('ext.badName'), 'err'); return }
+  if (extEnabledList.value.includes(name)) { toastBus(t('ext.dupe', { name }), 'info', 1600); extInput.value = ''; return }
+  extExtra.value.push(name)
+  const s = new Set(extSelected.value); s.add(name); extSelected.value = s
+  extInput.value = ''
+  extPreset.value = ''
+}
+// 应用：逐个 add/remove 真实 spawn（每个重建镜像），串行执行，失败即停
+function extApply() {
+  const m = extModal.value
+  if (!m || !extDirty.value) return
+  const adds = extAdds.value, removes = extRemoves.value
+  const ops: { args: string[]; cli: string; label: string }[] = [
+    ...adds.map(e => ({ args: ['php', 'extension', 'add', m.version, e], cli: `phpbox php extension add ${m.version} ${e}`, label: `+${e}` })),
+    ...removes.map(e => ({ args: ['php', 'extension', 'remove', m.version, e], cli: `phpbox php extension remove ${m.version} ${e}`, label: `-${e}` })),
+  ]
+  closeModal()
+  runExtOps(ops, 0)
+}
+function runExtOps(ops: { args: string[]; cli: string; label: string }[], i: number) {
+  if (i >= ops.length) { toastBus(t('task.done'), 'ok'); return }
+  const op = ops[i]
+  const ok = dispatchTask(`PHP 扩展 ${op.label}`, op.cli, op.args, {
+    doneMsg: `${op.label} ✓`,
+    fallback: [{ d: 400, lines: [`[INFO] 演示环境：${op.cli}`] }],
+    onDone: () => runExtOps(ops, i + 1), // 上一个成功才执行下一个；失败链条自然中断
+  })
+  if (!ok) toastBus(t('task.busy'), 'err')
+}
+
+
 const backupErr = ref('')
 async function loadBackups() {
   backupErr.value = ''
@@ -427,7 +530,8 @@ function onSiteSwitch(e: Event, domain: string) {
                   <div class="kv"><span class="k">{{ t('svc.card.config') }}</span><span class="v">{{ t('svc.card.configPath', { kind: state.route, ver: v }) }}</span></div>
                 </div>
                 <div class="version-card-foot">
-                  <button class="btn btn-sm" @click="copyCmd(`phpbox ${state.route} list`)">{{ t('svc.card.cmd') }}</button>
+                  <button v-if="state.route === 'php'" class="btn btn-sm btn-primary" @click="openExt({ version: v })">{{ t('btn.exts') }}</button>
+                  <button v-else class="btn btn-sm" @click="copyCmd(`phpbox ${state.route} list`)">{{ t('svc.card.cmd') }}</button>
                   <button class="btn btn-sm btn-danger" @click="openUninstallModal(state.route, v)">{{ t('btn.uninstall') }}</button>
                 </div>
               </article>
@@ -553,6 +657,68 @@ function onSiteSwitch(e: Event, domain: string) {
         <div class="modal-foot">
           <button class="btn" @click="closeModal()">{{ t('mod.cancel') }}</button>
           <button class="btn btn-danger-solid" :disabled="!dcReady" @click="dcConfirm()">{{ dcModal.confirmLabel }}</button>
+        </div>
+      </div>
+      <div v-else-if="extModal" class="modal modal-lg">
+        <div class="modal-head">
+          <h3>{{ t('ext.title', { ver: extModal.version }) }}</h3>
+          <p>{{ t('ext.sub') }}</p>
+        </div>
+        <div class="modal-body">
+          <p v-if="extErr" class="alert alert-danger">{{ t('ext.loadErr') }}: {{ extErr }}</p>
+          <p v-else-if="extLoading" class="dim">{{ t('task.running') }}</p>
+          <template v-else>
+            <div class="field">
+              <label>{{ t('ext.preset') }}</label>
+              <div class="quick-picks">
+                <button v-for="p in ['default','minimal','web','debug']" :key="p" class="pick"
+                        :class="{ selected: extPreset === p }" @click="extPickPreset(p)">{{ t('ext.preset.'+p) }}</button>
+              </div>
+              <div class="hint">{{ t('ext.presetHint') }}</div>
+            </div>
+            <div class="field">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <label>{{ t('ext.enabled') }}</label>
+                <span class="mono" style="font-size:11.5px;color:var(--text-mute)">{{ t('ext.selected', { n: extSelected.size, total: extEnabledList.length }) }}</span>
+              </div>
+              <div class="ext-toggle-grid">
+                <button v-if="extEnabledList.length === 0" disabled class="hint">{{ t('ext.none') }}</button>
+                <button v-for="e in extEnabledList" :key="e" class="ext-toggle" :class="extSelected.has(e) ? 'on' : 'off'"
+                        @click="extToggle(e)">{{ e }}</button>
+              </div>
+              <div class="hint">{{ t('ext.enabledHint') }}</div>
+            </div>
+            <div class="field">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <label>{{ t('ext.suggest') }}</label>
+                <span class="mono" style="font-size:11.5px;color:var(--text-mute)">{{ t('ext.selected', { n: extSuggestList.filter(e => extSelected.has(e)).length, total: extSuggestList.length }) }}</span>
+              </div>
+              <div class="ext-toggle-grid">
+                <button v-if="extSuggestList.length === 0" disabled class="hint">{{ t('ext.none') }}</button>
+                <button v-for="e in extSuggestList" :key="e" class="ext-toggle" :class="extSelected.has(e) ? 'on' : 'off'"
+                        @click="extToggle(e)">{{ e }}</button>
+              </div>
+              <div class="hint">{{ t('ext.suggestHint') }}</div>
+            </div>
+            <div class="field">
+              <label>{{ t('ext.add') }}</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" v-model="extInput" :placeholder="t('ext.addPh')" autocomplete="off"
+                       @keydown.enter.prevent="extAddManual()">
+                <button class="btn btn-primary" @click="extAddManual()">+ {{ t('ext.addBtn') }}</button>
+              </div>
+              <div class="hint">{{ t('ext.addHint') }}</div>
+            </div>
+            <div class="alert alert-warn">
+              <strong>{{ t('ext.flow') }}</strong>{{ t('ext.flowBody') }} {{ t('ext.warn.rebuild') }}
+            </div>
+          </template>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" @click="closeModal()">{{ t('mod.cancel') }}</button>
+          <button class="btn btn-primary" :disabled="!extDirty || extLoading" @click="extApply()">
+            {{ extDirty ? t('ext.applyCount', { n: extSelected.size }) : t('ext.applied') }}
+          </button>
         </div>
       </div>
     </div>

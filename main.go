@@ -21,6 +21,7 @@ func main() {
 			application.NewService(&bindings.Docker{}),
 			application.NewService(&bindings.Runner{}),
 			application.NewService(&bindings.Backup{}),
+			application.NewService(&bindings.Php{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
