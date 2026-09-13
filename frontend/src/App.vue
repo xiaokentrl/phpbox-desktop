@@ -12,6 +12,7 @@ import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desk
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
 import { ListSites } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
 import { ListGoProjects } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
+import { StartDaemon, StopDaemon } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
@@ -197,6 +198,7 @@ onMounted(() => {
   initTheme(); loadContainers()
   onWailsReady(() => { loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
   initTrayNav() // 托盘菜单快速跳转（ui:navigate）
+  initDaemonEvents() // 长驻进程通道（go run / go logs）
 })
 watch(() => state.route, (r) => {
   if (r === 'backup') loadBackups()
@@ -577,6 +579,53 @@ function goTask(action: 'test' | 'stop', name: string) {
   })
 }
 
+// ── 长驻进程通道（daemon）：go run / go logs 的持续输出流 ──
+let daemonBound = false
+function initDaemonEvents() {
+  if (daemonBound || !inWails()) return
+  daemonBound = true
+  Events.On('daemon:log', (ev) => {
+    const d = ev.data as any
+    if (!state.daemon || d?.id !== state.daemon.id) return
+    state.daemon.lines.push({ t: String(d.line ?? ''), c: d.cls || 'dim' })
+    if (state.daemon.lines.length > 400) state.daemon.lines.splice(0, state.daemon.lines.length - 400) // 环形截断
+  })
+  Events.On('daemon:state', (ev) => {
+    const d = ev.data as any
+    if (!state.daemon || d?.id !== state.daemon.id) return
+    state.daemon.running = !!d.running
+    state.daemon.failed = !!d.failed
+    if (!d.running) { // 退出：任务模型刷新项目状态
+      toastBus(`${state.daemon.label}: ${d.failed ? t('dm.failed') : t('dm.exited')}`, d.failed ? 'err' : 'info')
+    }
+  })
+}
+async function startGoRun(name: string) {
+  const id = `go:${name}`
+  if (state.daemon?.running) { toastBus(t('dm.busy'), 'err'); return }
+  state.daemon = { id, label: `${t('gp.run')}·${name}`, cli: `phpbox go run ${name}`, lines: [{ t: '$ phpbox go run ' + name, c: 'cmd' }], running: true, failed: false }
+  try {
+    await StartDaemon(id, ['go', 'run', name])
+  } catch (e) {
+    state.daemon = null
+    toastBus(String(e), 'err', 5000)
+  }
+}
+async function stopDaemonRun() {
+  const d = state.daemon
+  if (!d) return
+  try {
+    await StopDaemon(d.id)
+    toastBus(t('dm.stopped') + ' · ' + t('dm.stopHint'), 'info', 4200)
+  } catch (e) { toastBus(String(e), 'err', 5000) }
+}
+const daemonLogEl = ref<HTMLElement | null>(null)
+watch(() => state.daemon?.lines.length, async () => { // 新日志行 → 滚到底部
+  if (!state.daemon) return
+  await nextTick()
+  if (daemonLogEl.value) daemonLogEl.value.scrollTop = daemonLogEl.value.scrollHeight
+})
+
 // ── 托盘导航（Go 侧 Emit ui:navigate {route}）──
 let trayNavBound = false
 function initTrayNav() {
@@ -730,6 +779,24 @@ function initTrayNav() {
               <div><h1>{{ t('gp.title') }}</h1><p class="view-sub">{{ t('gp.sub', { root: GO_ROOT_LABEL }) }}</p></div>
               <div class="header-actions"><button class="btn" @click="loadGoProjects()">{{ t('btn.refresh') }}</button></div>
             </header>
+            <!-- 长驻进程卡片：go run 持续输出流（daemon 通道）-->
+            <div v-if="state.daemon" class="card" style="margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px 8px">
+                <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                  <span class="drawer-dot" :class="state.daemon.running ? 'running' : state.daemon.failed ? 'failed' : 'success'"></span>
+                  <strong style="font-size:13.5px">{{ state.daemon.label }}</strong>
+                  <span class="drawer-cmd">$ {{ state.daemon.cli }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span class="drawer-status">{{ state.daemon.running ? t('dm.running') : state.daemon.failed ? t('dm.failed') : t('dm.exited') }}</span>
+                  <button v-if="state.daemon.running" class="btn btn-sm btn-danger" @click="stopDaemonRun()">{{ t('dm.stopRun') }}</button>
+                  <button v-else class="btn btn-sm" @click="state.daemon = null">✕</button>
+                </div>
+              </div>
+              <div ref="daemonLogEl" style="max-height:220px;overflow-y:auto;padding:10px 16px;background:var(--bg);border-top:1px solid var(--border-2)">
+                <div v-for="(l, i) in state.daemon.lines" :key="i" class="log-line" :class="l.c">{{ l.t }}</div>
+              </div>
+            </div>
             <div v-if="state.goProjects.length === 0" class="empty">
               <div class="empty-icon">🐹</div><h2>{{ t('gp.empty.title') }}</h2>
               <p>{{ t('gp.empty.desc', { root: GO_ROOT_LABEL }) }}</p>
@@ -741,10 +808,10 @@ function initTrayNav() {
                 <td><span class="mono dim" style="font-size:12px">{{ p.dir }}</span></td>
                 <td><span class="status-pill" :class="p.running ? 'pill-ok' : 'pill-off'"><span class="pill-dot"></span>{{ p.running ? t('gp.running') : t('gp.stopped') }}</span></td>
                 <td><div class="row-actions">
-                  <button class="btn btn-sm" disabled :title="t('gp.runDisabled')">{{ t('gp.run') }}</button>
+                  <button class="btn btn-sm btn-primary" :disabled="state.daemon?.running && state.daemon.id !== `go:${p.name}`"
+                          :title="t('dm.busy')" @click="startGoRun(p.name)">{{ t('gp.run') }}</button>
                   <button class="btn btn-sm" :disabled="taskRunning()" @click="goTask('test', p.name)">{{ t('gp.test') }}</button>
                   <button v-if="p.running" class="btn btn-sm" :disabled="taskRunning()" @click="goTask('stop', p.name)">{{ t('gp.stop') }}</button>
-                  <button v-else class="btn btn-sm" @click="copyCmd(`phpbox go run ${p.name}`)">{{ t('gp.copyCmd') }}</button>
                 </div></td>
               </tr></tbody></table></div>
           </template>

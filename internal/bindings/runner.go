@@ -18,6 +18,11 @@ import (
 type Runner struct {
 	mu      sync.Mutex
 	running bool
+
+	// daemon 长驻进程槽（daemon.go）：与任务队列独立
+	daemonMu     sync.Mutex
+	daemonID     string
+	daemonCancel context.CancelFunc
 }
 
 // TaskEvent 任务事件（前端 EventsOn 消费）。

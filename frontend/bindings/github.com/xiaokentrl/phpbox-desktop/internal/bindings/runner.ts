@@ -11,8 +11,30 @@
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
 /**
+ * DaemonRunning 返回当前 daemon 标识（空串=无）。
+ */
+export function DaemonRunning(): $CancellablePromise<string> {
+    return $Call.ByID(1844201742);
+}
+
+/**
  * RunTask spawn bash phpbox CLI 并流式返回输出（事件名 task:log / task:done）。
  */
 export function RunTask(args: string[] | null): $CancellablePromise<void> {
     return $Call.ByID(3889977853, args);
+}
+
+/**
+ * StartDaemon 异步启动长驻命令并立即返回。id 为调用方给的进程标识（前端路由用）。
+ * 已有 daemon 运行时拒绝；进程退出（自然/取消）后槽位释放并广播 daemon:state。
+ */
+export function StartDaemon(id: string, args: string[] | null): $CancellablePromise<void> {
+    return $Call.ByID(4269076101, id, args);
+}
+
+/**
+ * StopDaemon 停止运行中的 daemon。id 不匹配（槽位空或他属）时报错而非误杀。
+ */
+export function StopDaemon(id: string): $CancellablePromise<void> {
+    return $Call.ByID(2181364711, id);
 }

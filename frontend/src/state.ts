@@ -40,6 +40,8 @@ export interface BackupRow { file: string; path: string; size: number; at: strin
 export interface OfflineRow { svc: string; ver: string; path: string; size: number; files: number; kind: string }
 // Go 项目行（与 Go GoProjectEntry 对齐）
 export interface GoProjectRow { name: string; dir: string; running: boolean }
+// 长驻进程（daemon）状态：go run / go logs 等永不返回命令的独立通道
+export interface DaemonState { id: string; label: string; cli: string; lines: TaskLine[]; running: boolean; failed: boolean }
 // PHP 扩展弹窗载荷（真实状态经 Php.ReadPhpExtensions 加载）
 export interface ExtModal {
   kind: 'ext'
@@ -69,6 +71,8 @@ export const state = reactive({
   offlineCache: [] as OfflineRow[],
   // 真实数据：经 GoProjects 绑定发现 ~/www 下的 go.mod 项目
   goProjects: [] as GoProjectRow[],
+  // 长驻进程通道（Runner.StartDaemon/StopDaemon）：单槽，与任务队列独立
+  daemon: null as DaemonState | null,
   task: null as Task | null,
   modal: null as InstallModal | DangerModal | ExtModal | SiteModal | null,
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
