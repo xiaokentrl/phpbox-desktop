@@ -19,6 +19,7 @@ func main() {
 		Description: "Multi-version Docker dev-environment manager",
 		Services: []application.Service{
 			application.NewService(&bindings.Docker{}),
+			application.NewService(&bindings.Runner{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
