@@ -2,8 +2,8 @@
 // 浏览器环境（vite dev 纯预览）降级为模拟步骤（规约 §13 显式降级）。
 import { Events } from '@wailsio/runtime'
 import { RunTask } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
-import { state, startTask, pushTaskLine, finishTask, taskRunning, runTask } from '../state'
-import type { Step, TaskLine } from '../state'
+import { state, startTask, pushTaskLine, pushTaskStage, finishTask, taskRunning, runTask } from '../state'
+import type { Step, TaskLine, TaskStage } from '../state'
 
 // 桌面环境探测：@wailsio/runtime 在任何环境都会自建 window._wails（invoke/clientId），
 // 只有原生 Wails 窗口才由 Go 侧注入 _wails.flags（runtime.Core，WindowLoadFinished 时）。
@@ -27,11 +27,17 @@ export interface TaskOptions { doneMsg?: string; onDone?: () => void; fallback?:
 // task:done 回调需要拿到发起方的 doneMsg/onDone —— 模块级登记（单队列，同时最多一个任务）
 let taskDoneOpts: TaskOptions = {}
 
-// Go 侧 TaskEvent{Line, Cls}：Cls 为 'ok'|'err'|''（runner.go classify）
+// Go 侧 TaskEvent{Line, Cls, Phase}：Cls 为 'ok'|'err'|''；Phase 为日志推断的
+// 任务阶段（configured/preparing/committed/rolling_back/absent，runner.go inferPhase）
 function evLine(data: any): TaskLine {
   const cls = data?.cls
   const c: TaskLine['c'] = cls === 'ok' || cls === 'err' ? cls : cls === '' ? '' : 'dim'
   return { t: String(data?.line ?? ''), c }
+}
+function evPhase(data: any): TaskStage | null {
+  const p = data?.phase
+  if (p === 'configured' || p === 'preparing' || p === 'committed' || p === 'rolling_back' || p === 'absent') return p
+  return null // 无阶段词（推断失败）：不臆造
 }
 
 let subscribed = false
@@ -41,6 +47,8 @@ export function initTaskEvents() {
   Events.On('task:log', (ev) => {
     const l = evLine(ev.data)
     pushTaskLine(l.t, l.c)
+    const stage = evPhase(ev.data)
+    if (stage) pushTaskStage(stage)
   })
   Events.On('task:done', (ev) => {
     const task = state.task

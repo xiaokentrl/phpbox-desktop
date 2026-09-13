@@ -12,7 +12,10 @@ export interface SiteEntry { domain: string; php: string; root: string; hosts: b
 // @deprecated 壳化重构过渡：改用绑定的 ContainerSummary
 export interface ContainerRow { name: string; image: string; state: string }
 export interface TaskLine { t: string; c?: '' | 'ok' | 'err' | 'meta' | 'dim' | 'cmd' }
-export interface Task { label: string; cli: string; lines: TaskLine[]; phase: 'running' | 'success' | 'failed' }
+// stage：Go 侧日志阶段推断（runner.go inferPhase：configured/preparing/committed/
+// rolling_back/absent）；推断失败为 null——显示原始日志，不臆造状态（ui-spec §8）
+export type TaskStage = 'configured' | 'preparing' | 'committed' | 'rolling_back' | 'absent'
+export interface Task { label: string; cli: string; lines: TaskLine[]; phase: 'running' | 'success' | 'failed'; stage: TaskStage | null }
 
 // 危险确认弹窗载荷（§8.2 三条件：警告清单 + 勾选 + 输入匹配）
 export interface DangerModal {
@@ -141,13 +144,19 @@ export function toastBus(msg: string, kind: 'ok' | 'err' | 'info', ttl = 3200) {
 // 任务原语：真实链路（src/api/task.ts 事件订阅）与模拟链路（runTask）共用
 export function startTask(label: string, cli: string): boolean {
   if (state.task && state.task.phase === 'running') return false // 单队列（§2.3）
-  state.task = { label, cli, lines: [{ t: '$ ' + cli, c: 'cmd' }], phase: 'running' }
+  state.task = { label, cli, lines: [{ t: '$ ' + cli, c: 'cmd' }], phase: 'running', stage: null }
   return true
 }
 export function pushTaskLine(line: string, cls?: TaskLine['c']): void {
   const task = state.task
   if (!task || task.phase !== 'running') return
   task.lines.push(cls === undefined ? classify(line) : { t: line, c: cls })
+}
+// 记录任务最新阶段（Go 侧 task:log 事件携带 phase；浏览器模拟任务不产生）
+export function pushTaskStage(stage: TaskStage): void {
+  const task = state.task
+  if (!task || task.phase !== 'running') return
+  task.stage = stage
 }
 export function finishTask(phase: 'success' | 'failed', opts: { doneMsg?: string; onDone?: () => void } = {}): void {
   const task = state.task

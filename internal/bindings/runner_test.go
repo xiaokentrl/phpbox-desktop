@@ -46,6 +46,36 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// 阶段推断：断言行全部来自 bash 仓真实日志词汇（grep 采集，见 phaseRules 注释出处）
+func TestInferPhase(t *testing.T) {
+	cases := []struct {
+		in        string
+		wantPhase string
+		wantCls   string
+	}{
+		{"[INFO] 初始化 mysql 8.0 配置...", "configured", ""},             // install.sh:92
+		{"[OK]   mysql 8.0 配置就绪", "configured", "ok"},                // install.sh:104
+		{"[INFO] Docker 构建开始：PHP 8.4，超时 900s", "preparing", ""},      // php/install.sh:93
+		{"[INFO] 离线构建 PHP 8.4：apk 闭包 23 个包", "preparing", ""},        // php/install.sh:166
+		{"[OK]   mysql 8.0 安装完成，端口 3306", "committed", "ok"},         // install.sh:163
+		{"[OK]   mysql 8.0 端口已改为 3307", "committed", "ok"},           // install.sh:195
+		{"[INFO] 安装失败，自动清理 mysql 8.0 的半安装状态...", "rolling_back", ""}, // install.sh:47
+		{"[ERR]  端口变更失败，已回滚", "rolling_back", "err"},                 // install.sh:187
+		{"[OK]   PHP 8.4 已卸载", "absent", "ok"},                       // php/uninstall:116
+		{"[INFO] apk 下载器启动：镜像 x，容器 y", "", ""},                       // 无阶段词：不臆造
+		{"[ERR]  未知错误", "", "err"},                                   // 错误但无阶段词
+	}
+	for _, c := range cases {
+		ev := classify(c.in)
+		if ev.Phase != c.wantPhase {
+			t.Errorf("inferPhase(%q) = %q, want %q", c.in, ev.Phase, c.wantPhase)
+		}
+		if ev.Cls != c.wantCls {
+			t.Errorf("classify(%q).Cls = %q, want %q", c.in, ev.Cls, c.wantCls)
+		}
+	}
+}
+
 func TestTrimNL(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"line\n", "line"},

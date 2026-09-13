@@ -1208,6 +1208,7 @@ function initTrayNav() {
             <span class="drawer-cmd">$ {{ state.task.cli }}</span>
           </div>
           <div class="drawer-right">
+            <span v-if="state.task.phase === 'running' && state.task.stage" class="stage-pill">{{ t('stage.' + state.task.stage) }}</span>
             <span class="drawer-status">{{ taskPhaseLabel }}</span>
             <button class="icon-btn" v-if="state.task.phase !== 'running'" :title="t('task.close')" @click="clearTask()">✕</button>
             <button class="icon-btn" @click="drawerCollapsed = !drawerCollapsed">{{ drawerCollapsed ? '▲' : '▼' }}</button>
