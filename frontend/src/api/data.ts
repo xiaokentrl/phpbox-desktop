@@ -5,7 +5,7 @@ import { cmpVerDesc } from '../utils'
 import { ListContainers } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ListOfflineCache } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
-import { ListSites } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
+import { ListSites, ProbeSiteHealth } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
 import { ListGoProjects } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { ReadEnv } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 
@@ -54,8 +54,21 @@ export async function loadSites() {
   if (!inWails()) return
   try {
     const rows = (await ListSites()) ?? []
-    state.sites = rows.map(r => ({ domain: r.domain, php: r.php, root: r.root, hosts: !!r.hosts })) as SiteEntry[]
+    state.sites = rows.map(r => ({ domain: r.domain, php: r.php, root: r.root, hosts: !!r.hosts, health: '' })) as SiteEntry[]
+    probeSites() // 健康探测异步补齐（失败不影响列表展示）
   } catch (e) { state.siteErr = String(e) }
+}
+
+// 站点健康：Go 侧 HEAD 探测（WebView fetch 跨源读不到状态码），结果逐站点回写
+async function probeSites() {
+  const domains = state.sites.map(s => s.domain)
+  await Promise.all(domains.map(async d => {
+    try {
+      const res = await ProbeSiteHealth(d)
+      const s = state.sites.find(x => x.domain === d)
+      if (s && (res.status === 'up' || res.status === 'degraded' || res.status === 'down')) s.health = res.status
+    } catch { /* 单站点探测失败保留 ''（未探测），不污染整体 */ }
+  }))
 }
 
 export async function loadGoProjects() {

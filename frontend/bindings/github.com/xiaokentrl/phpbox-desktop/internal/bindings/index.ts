@@ -27,5 +27,6 @@ export type {
     GoProjectEntry,
     OfflineEntry,
     OfflineResult,
-    SiteEntry
+    SiteEntry,
+    SiteHealth
 } from "./models.js";

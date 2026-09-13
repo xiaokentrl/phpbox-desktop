@@ -11,7 +11,7 @@ import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
-import { ListSites } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
+import { ListSites, ProbeSiteHealth } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
 import { ListGoProjects } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { StartDaemon, StopDaemon } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
 import { ReadEnv, PatchEnv } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
@@ -482,11 +482,22 @@ const phpVerToKey = (v: string) => 'php' + v.replace(/\./g, '')  // 8.4 → php8
 // 服务键 → 展示名（php84 → 8.4；未知键原样展示）
 const phpKeyLabel = (k: string) => installedPhp.value.find(v => phpVerToKey(v) === k) ?? k
 
+// 健康徽章（§3.1 三态）：'' 未探测灰 / up 绿 / degraded 黄 / down 灰（未启动）
+const HEALTH_PILL: Record<string, string> = { '': 'pill-off', up: 'pill-ok', degraded: 'pill-warn', down: 'pill-off' }
+const HEALTH_TXT: Record<string, string> = { '': 'site.health.none', up: 'health.up', degraded: 'health.warn', down: 'health.down' }
+
 async function loadSites() {
   if (!inWails()) return // 浏览器降级：保留空列表
   try {
     const rows = (await ListSites()) ?? []
-    state.sites = rows.map(r => ({ domain: r.domain, php: r.php, root: r.root, hosts: !!r.hosts }))
+    state.sites = rows.map(r => ({ domain: r.domain, php: r.php, root: r.root, hosts: !!r.hosts, health: '' as const }))
+    // 健康探测异步补齐：Go 侧 HEAD（WebView fetch 读不到状态码），单站失败不影响列表
+    Promise.all(state.sites.map(async s => {
+      try {
+        const res = await ProbeSiteHealth(s.domain)
+        if (res.status === 'up' || res.status === 'degraded' || res.status === 'down') s.health = res.status
+      } catch { /* 保留 ''（未探测） */ }
+    }))
   } catch (e) { toastBus(String(e), 'err', 5000) }
 }
 watch(() => state.modal?.kind, (k) => {
@@ -726,11 +737,11 @@ function initTrayNav() {
             <template v-else>
               <div class="summary">
                 <div class="summary-item"><div class="summary-num">{{ state.sites.length }}</div><div class="summary-label">{{ t('sum.sites') }}</div></div>
-                <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.sites.filter(s => s.hosts).length }}</div><div class="summary-label">{{ t('sum.healthy') }}</div></div>
+                <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.sites.filter(s => s.health === 'up').length }}</div><div class="summary-label">{{ t('sum.healthy') }}</div></div>
                 <div class="summary-item"><div class="summary-num">{{ state.env.NGINX_PORT }}</div><div class="summary-label">{{ t('sum.port') }}</div></div>
               </div>
               <div class="table-wrap"><table>
-                <thead><tr><th>{{ t('th.domain') }}</th><th>{{ t('th.php') }}</th><th>{{ t('th.root') }}</th><th>{{ t('th.hosts') }}</th><th></th></tr></thead>
+                <thead><tr><th>{{ t('th.domain') }}</th><th>{{ t('th.php') }}</th><th>{{ t('th.root') }}</th><th>{{ t('th.health') }}</th><th>{{ t('th.hosts') }}</th><th></th></tr></thead>
                 <tbody><tr v-for="s in state.sites" :key="s.domain">
                   <td><a class="site-domain" :href="'http://'+s.domain" target="_blank" rel="noopener"><span class="favicon">{{ s.domain[0].toUpperCase() }}</span>{{ s.domain }}</a></td>
                   <td><select class="php-select" :value="s.php" @change="onSiteSwitch($event, s.domain)">
@@ -741,6 +752,7 @@ function initTrayNav() {
                     </option>
                   </select></td>
                   <td><span class="mono dim">{{ s.root }}</span></td>
+                  <td><span class="status-pill" :class="HEALTH_PILL[s.health]"><span class="pill-dot"></span>{{ t(HEALTH_TXT[s.health]) }}</span></td>
                   <td>
                     <button v-if="!s.hosts" class="btn btn-sm" @click="hostsToggle(s.domain, true)">{{ t('site.hosts.add') }}</button>
                     <span v-else class="chip chip-accent">{{ t('site.hosts.added') }}</span>

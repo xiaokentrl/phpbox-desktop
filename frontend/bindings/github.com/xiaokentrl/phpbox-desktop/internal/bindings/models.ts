@@ -12,6 +12,9 @@ import * as docker$0 from "../engine/docker/models.js";
 import * as goproject$0 from "../engine/goproject/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as health$0 from "../engine/health/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as offline$0 from "../engine/offline/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -55,3 +58,8 @@ export type OfflineResult = offline$0.Result;
  * SiteEntry 透传引擎类型。
  */
 export type SiteEntry = site$0.Entry;
+
+/**
+ * SiteHealth 透传引擎类型（status: up/degraded/down + code + err）。
+ */
+export type SiteHealth = health$0.Result;

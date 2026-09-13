@@ -7,7 +7,8 @@ export type Route = 'sites' | 'php' | 'mysql' | 'pgsql' | 'redis' | 'nginx' | 'g
   | 'backup' | 'offline' | 'settings' | 'overview'
 
 // 站点行（与 Go SiteEntry 对齐：php 为服务键如 php84）
-export interface SiteEntry { domain: string; php: string; root: string; hosts: boolean }
+// health：Go 侧 HEAD 探测结果（up/degraded/down；'' = 未探测）
+export interface SiteEntry { domain: string; php: string; root: string; hosts: boolean; health: '' | 'up' | 'degraded' | 'down' }
 // @deprecated 壳化重构过渡：改用绑定的 ContainerSummary
 export interface ContainerRow { name: string; image: string; state: string }
 export interface TaskLine { t: string; c?: '' | 'ok' | 'err' | 'meta' | 'dim' | 'cmd' }

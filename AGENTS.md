@@ -62,6 +62,6 @@ main.go/tray.go（窗口、托盘、资产、服务注册）
 
 ## 6. 阶段边界
 
-**已接真实数据**：站点（vhost/hosts/切换/删除）、五服务线（安装/卸载/扩展）、备份（列表/创建/恢复/删除）、离线缓存（扫描/校验/清理）、Go 项目（发现/测试/停止/daemon 运行）、设置（.env 白名单读写）、托盘（32×32 图标 + 关 X 隐藏）、任务抽屉 + daemon 通道。
+**已接真实数据**：站点（vhost/hosts/切换/删除/**健康探活**——Go 侧 HEAD 127.0.0.1:NGINX_PORT + Host 头路由免 DNS，三态 up/degraded/down，实测 demo.test→403 degraded 为真实结果）、五服务线（安装/卸载/扩展，installed 由容器 phpbox-service/version labels 派生与 cmd_list 同源）、备份（列表/创建/恢复/删除）、离线缓存（扫描/校验/清理）、Go 项目（发现/测试/停止/daemon 运行）、设置（.env 白名单读写）、托盘（32×32 图标 + 关 X 隐藏）、任务抽屉 + daemon 通道。
 
-**v0.1 待办**：站点 HTTP 探活（真实健康列）、命令面板（⌘K）、Windows 构建验证、Dock/desktop file 安装（`build/linux/phpbox-desktop.desktop` 已生成未安装到 `~/.local/share/applications/`，窗口 WM_CLASS 匹配待验证）、README、绑定层路径统一读 .env。
+**v0.1 待办**：命令面板（⌘K）、Windows 构建验证、Dock/desktop file 安装（`build/linux/phpbox-desktop.desktop` 已生成未安装到 `~/.local/share/applications/`，窗口 WM_CLASS 匹配待验证）、README、绑定层路径统一读 .env。

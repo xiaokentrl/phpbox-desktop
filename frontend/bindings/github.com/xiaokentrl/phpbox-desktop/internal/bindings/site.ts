@@ -20,3 +20,11 @@ import * as $models from "./models.js";
 export function ListSites(): $CancellablePromise<$models.SiteEntry[] | null> {
     return $Call.ByID(2593964912);
 }
+
+/**
+ * ProbeSiteHealth 对域名发 HEAD 探测（Go 侧：WebView fetch 跨源读不到状态码）。
+ * 目标 127.0.0.1:NGINX_PORT，Host 头路由——不依赖 /etc/hosts。
+ */
+export function ProbeSiteHealth(domain: string): $CancellablePromise<$models.SiteHealth> {
+    return $Call.ByID(3404157707, domain);
+}
