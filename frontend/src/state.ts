@@ -33,6 +33,8 @@ export interface InstallModal {
   suggested: string[]
   single?: boolean
 }
+// 备份归档行（与 Go BackupEntry 对齐：file/path/size/at）
+export interface BackupRow { file: string; path: string; size: number; at: string }
 
 export const state = reactive({
   route: 'sites' as Route,
@@ -51,9 +53,8 @@ export const state = reactive({
   ] as SiteEntry[],
   containers: [] as ContainerRow[],
   installed: { php:['8.4','8.2','8.0','7.4'], mysql:['8.4','8.0','5.7'], pgsql:['17'], redis:['8'], nginx:['alpine'] } as Record<string, string[]>,
-  backups: [
-    { file: 'backup-20260913-0439.tar.gz', size: '1.3 GB', at: '2026-09-13 04:39' },
-  ],
+  // 真实数据：经 Backup 绑定扫描 ~/phpbox/backups/ 加载
+  backups: [] as BackupRow[],
   task: null as Task | null,
   modal: null as InstallModal | DangerModal | null,
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,

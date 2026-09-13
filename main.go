@@ -20,6 +20,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(&bindings.Docker{}),
 			application.NewService(&bindings.Runner{}),
+			application.NewService(&bindings.Backup{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

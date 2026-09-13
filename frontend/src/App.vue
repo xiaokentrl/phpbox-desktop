@@ -4,8 +4,9 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
   openInstall, openDanger, closeModal, type Route, type ContainerRow } from './state'
-import { dispatchTask } from './api/task'
+import { dispatchTask, inWails } from './api/task'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
+import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
@@ -186,7 +187,8 @@ async function loadContainers() {
   try { containers.value = (await ListContainers()) ?? [] }
   catch (e) { dockerErr.value = String(e) }
 }
-onMounted(() => { initTheme(); loadContainers() })
+onMounted(() => { initTheme(); loadContainers(); loadBackups() })
+watch(() => state.route, (r) => { if (r === 'backup') loadBackups() }) // 进入备份页刷新归档列表
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
 const drawerCollapsed = ref(false)
@@ -213,6 +215,87 @@ function runDiagnostics() {
     onDone: () => { loadContainers() },
   })
   if (!ok) toastBus(t('task.busy'), 'err')
+}
+
+// ── 备份（真实归档列表：Backup 绑定扫描 ~/phpbox/backups/）──
+const backupErr = ref('')
+async function loadBackups() {
+  backupErr.value = ''
+  if (!inWails) return // 浏览器降级：保留空列表
+  try {
+    const rows = (await ListBackups()) ?? []
+    state.backups = rows.map(r => ({ file: r.file, path: r.path, size: Number(r.size), at: String(r.at) }))
+  } catch (e) { backupErr.value = String(e) }
+}
+function fmtSize(n: number): string {
+  if (n >= 1024 ** 3) return (n / 1024 ** 3).toFixed(1) + ' GB'
+  if (n >= 1024 ** 2) return (n / 1024 ** 2).toFixed(0) + ' MB'
+  if (n >= 1024) return (n / 1024).toFixed(0) + ' KB'
+  return n + ' B'
+}
+function fmtTime(iso: string): string {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+function backupNow() {
+  const ok = dispatchTask(t('bk.task.now'), 'phpbox backup', ['backup'], {
+    doneMsg: t('bk.done.now'),
+    fallback: [{ d: 400, lines: ['[INFO] 演示环境：备份流程模拟输出'] }, { d: 600, lines: ['[OK]   备份完成: ~/phpbox/backups/'] }],
+    onDone: () => { loadBackups() },
+  })
+  if (!ok) toastBus(t('task.busy'), 'err')
+}
+function openRestoreModal(b: { file: string; path: string; size: number }) {
+  openDanger({
+    title: t('bk.restoreTitle'),
+    description: `${b.file}（${fmtSize(b.size)}）`,
+    warnings: [
+      { text: t('bk.warn.overwrite') },
+      { text: t('bk.warn.stopSvc') },
+      { text: t('bk.warn.noImages'), keep: true },
+      { text: t('bk.warn.goReinstall'), keep: true },
+      { text: t('bk.warn.reload'), keep: true },
+    ],
+    checkboxLabel: t('bk.restoreCheck'),
+    inputLabel: t('bk.confirmFile'),
+    expect: b.file,
+    placeholder: t('bk.confirmFilePh'),
+    // 绝对路径 + -y：spawn 非交互必须 -y；GUI 弹窗即确认界面（cmd_restore 的 tty 确认在桌面环境不可用）
+    cliPreview: `phpbox restore ${b.path} -y`,
+    confirmLabel: t('bk.confirmRestore'),
+    onConfirm: () => {
+      dispatchTask(t('bk.task.restore'), `phpbox restore ${b.path} -y`, ['restore', b.path, '-y'], {
+        doneMsg: t('bk.done.restore'),
+        fallback: [{ d: 400, lines: ['[INFO] 演示环境：恢复流程模拟输出'] }],
+        onDone: () => { loadContainers(); loadBackups() },
+      })
+    },
+  })
+}
+function openBackupDeleteModal(b: { file: string; size: number }) {
+  openDanger({
+    title: t('bk.deleteTitle'),
+    description: `${b.file}（${fmtSize(b.size)}）`,
+    warnings: [
+      { text: t('bk.warn.deleteFile') },
+      { text: t('bk.deleteDesc') },
+      { text: t('bk.warn.envKeep'), keep: true },
+    ],
+    checkboxLabel: t('bk.deleteCheck'),
+    inputLabel: t('bk.confirmFile'),
+    expect: b.file,
+    placeholder: t('bk.confirmFilePh'),
+    cliPreview: `${t('bk.warn.deleteFile')}: ${b.file}`,
+    confirmLabel: t('bk.confirmDelete'),
+    onConfirm: async () => {
+      if (!inWails) { toastBus(t('bk.done.delete'), 'ok'); return }
+      try {
+        await DeleteBackup(b.file)
+        toastBus(t('bk.done.delete'), 'ok')
+        loadBackups()
+      } catch (e) { toastBus(String(e), 'err', 5000) }
+    },
+  })
 }
 
 // ── 事件委托（站点切换等）──
@@ -357,8 +440,27 @@ function onSiteSwitch(e: Event, domain: string) {
             <div class="empty"><div class="empty-icon">🐹</div><h2>Go Projects</h2><p>Projects under ~/www with go.mod are auto-discovered.</p></div>
           </template>
           <template v-else-if="state.route === 'backup'">
-            <header class="view-header"><div><h1>Backups</h1><p class="view-sub">Archives downloadable to local machine</p></div></header>
-            <div class="empty"><div class="empty-icon">📦</div><h2>Backups</h2><p>Backup management — full port next slice.</p></div>
+            <header class="view-header"><div><h1>{{ t('bk.title') }}</h1><p class="view-sub">{{ t('bk.sub') }}</p></div>
+              <div class="header-actions">
+                <button class="btn btn-primary" :disabled="taskRunning()" @click="backupNow()">{{ t('bk.now') }}</button>
+              </div></header>
+            <div class="alert alert-warn" style="margin-bottom:16px"><strong>{{ t('bk.warn') }}</strong>{{ t('bk.warnBody') }}</div>
+            <p v-if="backupErr" class="alert alert-danger">{{ t('bk.loadErr') }}: {{ backupErr }}</p>
+            <div v-if="state.backups.length === 0 && !backupErr" class="empty">
+              <div class="empty-icon">📦</div><h2>{{ t('bk.empty') }}</h2><p>{{ t('bk.emptyDesc') }}</p>
+            </div>
+            <div v-else-if="!backupErr" class="table-wrap"><table>
+              <thead><tr><th style="width:34%">{{ t('th.archive') }}</th><th style="width:10%">{{ t('th.size') }}</th><th style="width:20%">{{ t('th.time') }}</th><th></th></tr></thead>
+              <tbody><tr v-for="b in state.backups" :key="b.file">
+                <td><span class="mono" style="font-size:12.5px">{{ b.file }}</span></td>
+                <td><span class="mono dim">{{ fmtSize(b.size) }}</span></td>
+                <td><span class="mono dim" style="font-size:12px">{{ fmtTime(b.at) }}</span></td>
+                <td><div class="row-actions">
+                  <button class="btn btn-sm" @click="copyCmd(b.path)">{{ t('common.copy') }}</button>
+                  <button class="btn btn-sm" @click="openRestoreModal(b)">{{ t('bk.restore') }}</button>
+                  <button class="btn btn-sm btn-danger" @click="openBackupDeleteModal(b)">{{ t('bk.delete') }}</button>
+                </div></td>
+              </tr></tbody></table></div>
           </template>
           <template v-else-if="state.route === 'offline'">
             <header class="view-header"><div><h1>Offline Cache</h1><p class="view-sub">Zero-network installs rely on this</p></div></header>

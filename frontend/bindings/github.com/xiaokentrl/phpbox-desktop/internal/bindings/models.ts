@@ -3,7 +3,15 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as backup$0 from "../engine/backup/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as docker$0 from "../engine/docker/models.js";
+
+/**
+ * BackupEntry 透传引擎类型。
+ */
+export type BackupEntry = backup$0.Entry;
 
 /**
  * ContainerSummary 透传引擎类型（前端 TS 类型由绑定生成器产出）。
