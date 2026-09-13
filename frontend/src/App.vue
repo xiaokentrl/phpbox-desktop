@@ -15,6 +15,7 @@ import { ListSites, ProbeSiteHealth } from '../bindings/github.com/xiaokentrl/ph
 import { ListGoProjects } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { StartDaemon, StopDaemon } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
 import { ReadEnv, PatchEnv } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
+import { ExportDiagnosticBundle } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/diag'
 
 // ── 主题 ──
 const THEMES = [
@@ -346,6 +347,21 @@ async function openDiagLogs(name: string) {
     diagLogErr.value = String(e) // 容器不存在/daemon 不可达原样呈现
   } finally {
     diagLogBusy.value = false
+  }
+}
+// 导出诊断包（§5.7 未知故障分支）：真实采集（presence/容器/日志/站点/扩展/.env 脱敏）
+// → 原生保存对话框；取消静默（用户主动取消不是失败），成功 toast 带路径
+const diagExportBusy = ref(false)
+async function exportDiagBundle() {
+  if (!inWails()) { toastBus(t('diag.export.browserOnly'), 'err', 4000); return }
+  diagExportBusy.value = true
+  try {
+    const path = await ExportDiagnosticBundle()
+    if (path) toastBus(`${t('diag.export.done')}: ${path}`, 'ok', 5000)
+  } catch (e) {
+    toastBus(String(e), 'err', 5000)
+  } finally {
+    diagExportBusy.value = false
   }
 }
 
@@ -932,6 +948,7 @@ function initTrayNav() {
               <div class="header-actions">
                 <button class="btn" @click="loadContainers(); loadPresence()">{{ t('btn.refresh') }}</button>
                 <button class="btn" :disabled="taskRunning()" @click="runDiagnostics">⚙ {{ t('overview.diag') }}</button>
+                <button class="btn btn-primary" :disabled="diagExportBusy" @click="exportDiagBundle">{{ t('diag.export') }}</button>
               </div></header>
 
             <div class="grid grid-3">

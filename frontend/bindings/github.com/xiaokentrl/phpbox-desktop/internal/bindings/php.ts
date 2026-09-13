@@ -12,7 +12,8 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 /**
  * ReadPhpExtensions 解析某 PHP 版本的真实扩展状态（config/php/<版本>/extensions.env）。
- * 清洗语义对齐 bash _php_read_extensions：去注释/空行、去 KEY= 前缀、逗号拆分、去重、排序。
+ * 清洗语义在 engine/php（对齐 bash _php_read_extensions：去注释/空行、去 KEY= 前缀、
+ * 逗号拆分、去重、排序）。
  */
 export function ReadPhpExtensions(version: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(1915908171, version);
