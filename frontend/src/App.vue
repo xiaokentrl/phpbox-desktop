@@ -5,6 +5,7 @@ import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
   openInstall, openDanger, openExt, openSiteModal, closeModal, type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
+import { Events } from '@wailsio/runtime'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
@@ -190,7 +191,11 @@ async function loadContainers() {
   try { containers.value = (await ListContainers()) ?? [] }
   catch (e) { dockerErr.value = String(e) }
 }
-onMounted(() => { initTheme(); loadContainers(); onWailsReady(() => { loadBackups(); loadOffline(); loadSites() }) })
+onMounted(() => {
+  initTheme(); loadContainers()
+  onWailsReady(() => { loadBackups(); loadOffline(); loadSites() })
+  initTrayNav() // 托盘菜单快速跳转（ui:navigate）
+})
 watch(() => state.route, (r) => {
   if (r === 'backup') loadBackups()
   if (r === 'offline') loadOffline()
@@ -548,6 +553,17 @@ function openSiteRemoveModal(domain: string) {
         onDone: () => { loadSites() },
       })
     },
+  })
+}
+
+// ── 托盘导航（Go 侧 Emit ui:navigate {route}）──
+let trayNavBound = false
+function initTrayNav() {
+  if (trayNavBound || !inWails()) return
+  trayNavBound = true
+  Events.On('ui:navigate', (ev) => {
+    const r = (ev.data as any)?.route
+    if (typeof r === 'string' && r) setRoute(r as Route)
   })
 }
 

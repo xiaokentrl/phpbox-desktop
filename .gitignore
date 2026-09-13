@@ -9,6 +9,8 @@ frontend/dist/
 
 # Wails 构建产物
 build/bin/
+bin/
+.task/
 
 # 系统/编辑器
 .DS_Store

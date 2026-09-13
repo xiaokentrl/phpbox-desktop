@@ -30,11 +30,13 @@ func main() {
 		},
 	})
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:  "phpbox Desktop",
 		Width:  1280,
 		Height: 800,
 	})
+
+	setupTray(app, win)
 
 	if err := app.Run(); err != nil {
 		panic(err)
