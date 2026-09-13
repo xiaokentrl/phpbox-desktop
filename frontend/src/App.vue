@@ -4,7 +4,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
   openInstall, openDanger, openExt, closeModal, type Route, type ContainerRow } from './state'
-import { dispatchTask, inWails } from './api/task'
+import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
@@ -188,7 +188,7 @@ async function loadContainers() {
   try { containers.value = (await ListContainers()) ?? [] }
   catch (e) { dockerErr.value = String(e) }
 }
-onMounted(() => { initTheme(); loadContainers(); loadBackups() })
+onMounted(() => { initTheme(); loadContainers(); onWailsReady(loadBackups) }) // 备份列表须等 Wails Core 注入完成
 watch(() => state.route, (r) => { if (r === 'backup') loadBackups() }) // 进入备份页刷新归档列表
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
@@ -241,7 +241,7 @@ watch(() => state.modal?.kind, async (k) => {
   if (!m) return
   extInstalled.value = []; extExtra.value = []; extSelected.value = new Set()
   extPreset.value = ''; extInput.value = ''; extErr.value = ''; extLoading.value = true
-  if (!inWails) { // 浏览器降级：演示数据
+  if (!inWails()) { // 浏览器降级：演示数据
     extInstalled.value = [...EXT_PRESETS.debug]
     extSelected.value = new Set(EXT_PRESETS.debug)
     extPreset.value = 'debug'
@@ -324,7 +324,7 @@ function runExtOps(ops: { args: string[]; cli: string; label: string }[], i: num
 const backupErr = ref('')
 async function loadBackups() {
   backupErr.value = ''
-  if (!inWails) return // 浏览器降级：保留空列表
+  if (!inWails()) return // 浏览器降级：保留空列表
   try {
     const rows = (await ListBackups()) ?? []
     state.backups = rows.map(r => ({ file: r.file, path: r.path, size: Number(r.size), at: String(r.at) }))
@@ -391,7 +391,7 @@ function openBackupDeleteModal(b: { file: string; size: number }) {
     cliPreview: `${t('bk.warn.deleteFile')}: ${b.file}`,
     confirmLabel: t('bk.confirmDelete'),
     onConfirm: async () => {
-      if (!inWails) { toastBus(t('bk.done.delete'), 'ok'); return }
+      if (!inWails()) { toastBus(t('bk.done.delete'), 'ok'); return }
       try {
         await DeleteBackup(b.file)
         toastBus(t('bk.done.delete'), 'ok')
