@@ -10,6 +10,9 @@ import * as docker$0 from "../engine/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as offline$0 from "../engine/offline/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as site$0 from "../engine/site/models.js";
 
 /**
  * BackupEntry 透传引擎类型。
@@ -30,3 +33,8 @@ export type OfflineEntry = offline$0.Entry;
  * OfflineResult 透传引擎类型。
  */
 export type OfflineResult = offline$0.Result;
+
+/**
+ * SiteEntry 透传引擎类型。
+ */
+export type SiteEntry = site$0.Entry;

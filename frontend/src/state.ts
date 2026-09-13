@@ -5,7 +5,8 @@ import { setLocale, t, type Locale } from './i18n'
 export type Route = 'sites' | 'php' | 'mysql' | 'pgsql' | 'redis' | 'nginx' | 'go'
   | 'backup' | 'offline' | 'settings' | 'overview'
 
-export interface SiteEntry { domain: string; php: string; root: string; hosts: boolean; health: 'up' | 'warn' | 'down' }
+// 站点行（与 Go SiteEntry 对齐：php 为服务键如 php84）
+export interface SiteEntry { domain: string; php: string; root: string; hosts: boolean }
 export interface ContainerRow { name: string; image: string; state: string }
 export interface TaskLine { t: string; c?: '' | 'ok' | 'err' | 'meta' | 'dim' | 'cmd' }
 export interface Task { label: string; cli: string; lines: TaskLine[]; phase: 'running' | 'success' | 'failed' }
@@ -42,6 +43,10 @@ export interface ExtModal {
   kind: 'ext'
   version: string
 }
+// 新建站点弹窗载荷
+export interface SiteModal {
+  kind: 'site'
+}
 
 export const state = reactive({
   route: 'sites' as Route,
@@ -52,12 +57,8 @@ export const state = reactive({
     NGINX_PORT: '80', NGINX_VERSION: 'alpine',
     GO_PROJECTS_ROOT: '~/www', GO_PROXY: 'https://goproxy.cn,direct',
   } as Record<string, string>,
-  // 演示数据：桌面版经 bash spawn（phpbox site add 等）读写真实状态
-  sites: [
-    { domain: 'shop.test', php: '8.4', root: '~/www/shop', hosts: true, health: 'up' },
-    { domain: 'legacy.test', php: '7.4', root: '~/www/legacy', hosts: true, health: 'down' },
-    { domain: 'api.test', php: '8.4', root: '~/www/api', hosts: false, health: 'warn' },
-  ] as SiteEntry[],
+  // 真实数据：经 Site 绑定解析 config/nginx/sites/*.vhost 加载
+  sites: [] as SiteEntry[],
   containers: [] as ContainerRow[],
   installed: { php:['8.4','8.2','8.0','7.4'], mysql:['8.4','8.0','5.7'], pgsql:['17'], redis:['8'], nginx:['alpine'] } as Record<string, string[]>,
   // 真实数据：经 Backup 绑定扫描 ~/phpbox/backups/ 加载
@@ -65,7 +66,7 @@ export const state = reactive({
   // 真实数据：经 Offline 绑定扫描 ~/phpbox/offline/ 加载
   offlineCache: [] as OfflineRow[],
   task: null as Task | null,
-  modal: null as InstallModal | DangerModal | ExtModal | null,
+  modal: null as InstallModal | DangerModal | ExtModal | SiteModal | null,
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
 })
 
@@ -99,6 +100,9 @@ export function openDanger(m: Omit<DangerModal, 'kind'>): void {
 }
 export function openExt(m: Omit<ExtModal, 'kind'>): void {
   state.modal = { kind: 'ext', ...m }
+}
+export function openSiteModal(): void {
+  state.modal = { kind: 'site' }
 }
 export function closeModal(): void { state.modal = null }
 

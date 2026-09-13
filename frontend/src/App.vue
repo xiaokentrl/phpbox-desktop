@@ -3,12 +3,13 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
-  openInstall, openDanger, openExt, closeModal, type Route, type ContainerRow } from './state'
+  openInstall, openDanger, openExt, openSiteModal, closeModal, type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
+import { ListSites } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
@@ -189,10 +190,11 @@ async function loadContainers() {
   try { containers.value = (await ListContainers()) ?? [] }
   catch (e) { dockerErr.value = String(e) }
 }
-onMounted(() => { initTheme(); loadContainers(); onWailsReady(() => { loadBackups(); loadOffline() }) })
+onMounted(() => { initTheme(); loadContainers(); onWailsReady(() => { loadBackups(); loadOffline(); loadSites() }) })
 watch(() => state.route, (r) => {
   if (r === 'backup') loadBackups()
   if (r === 'offline') loadOffline()
+  if (r === 'sites') loadSites()
 })
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
@@ -466,18 +468,90 @@ function openOfflinePruneModal(r: { svc: string; ver: string; size: number; file
   })
 }
 
-// ── 事件委托（站点切换等）──
+// ── 站点（真实 vhost 状态：Site 绑定解析 config/nginx/sites/*.conf + /etc/hosts）──
+const siteModal = computed(() => state.modal?.kind === 'site' ? state.modal : null)
+const siteDomain = ref('')
+const sitePhp = ref('')
+const siteErr = ref('')
+const DOMAIN_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)+$/
+const installedPhp = computed(() => (state.installed as Record<string, string[]>).php ?? [])
+const phpVerToKey = (v: string) => 'php' + v.replace(/\./g, '')  // 8.4 → php84（bash 服务键）
+
+async function loadSites() {
+  if (!inWails()) return // 浏览器降级：保留空列表
+  try {
+    const rows = (await ListSites()) ?? []
+    state.sites = rows.map(r => ({ domain: r.domain, php: r.php, root: r.root, hosts: !!r.hosts }))
+  } catch (e) { toastBus(String(e), 'err', 5000) }
+}
+watch(() => state.modal?.kind, (k) => {
+  if (k !== 'site') return
+  siteDomain.value = ''; sitePhp.value = installedPhp.value[0] ?? ''; siteErr.value = ''
+})
+const siteCmdPreview = computed(() => {
+  const d = siteDomain.value.trim(), p = sitePhp.value
+  return d && p ? `phpbox site add ${d} --php ${p}` : 'phpbox site add <域名> --php <版本>'
+})
+function confirmSiteAdd() {
+  const d = siteDomain.value.trim()
+  if (!DOMAIN_RE.test(d)) { siteErr.value = t('site.err.domain'); return }
+  if (state.sites.some(s => s.domain === d)) { siteErr.value = t('site.err.dupe'); return }
+  if (!sitePhp.value) { siteErr.value = t('site.err.php'); return }
+  if (!(state.installed as Record<string, string[]>).nginx?.length) { siteErr.value = t('site.err.noNginx'); return }
+  closeModal()
+  dispatchTask(t('site.addTask'), `phpbox site add ${d} --php ${sitePhp.value}`,
+    ['site', 'add', d, '--php', sitePhp.value], {
+    fallback: [{ d: 400, lines: [`[INFO] 演示环境：phpbox site add ${d} --php ${sitePhp.value}`] }],
+    onDone: () => { loadSites(); toastBus(`http://${d}`, 'ok') },
+  })
+}
+// 行内切换 PHP 版本：真实 spawn phpbox site switch（失败由抽屉显示，列表由重载还原）
 function onSiteSwitch(e: Event, domain: string) {
   const sel = e.target as HTMLSelectElement
   const site = state.sites.find(s => s.domain === domain)
-  if (!site || site.php === sel.value) return
-  const old = site.php; site.php = sel.value; sel.disabled = true
-  toastBus(t('toast.switching'), 'info', 1500)
-  setTimeout(() => {
-    site.php = old; sel.disabled = false; sel.value = old
-    toastBus(t('toast.demoRollback'), 'err', 3000)
-  }, 1500)
+  const oldKey = site?.php ?? ''
+  if (!site || oldKey === sel.value || !sel.value) return
+  const ver = sel.value.replace(/^php/, '')
+  dispatchTask(`${t('site.switchTask')}·${domain}`, `phpbox site switch ${domain} --php ${ver}`,
+    ['site', 'switch', domain, '--php', ver], {
+    fallback: [{ d: 400, lines: [`[INFO] 演示环境：phpbox site switch ${domain} --php ${ver}`] }],
+    onDone: () => { loadSites() },
+  })
 }
+function hostsToggle(domain: string, add: boolean) {
+  const args = add ? ['hosts', 'add', domain] : ['hosts', 'remove', domain]
+  dispatchTask(add ? t('site.hosts.taskAdd') : t('site.hosts.taskRemove'), `phpbox ${args.join(' ')}`, args, {
+    fallback: [{ d: 400, lines: [`[INFO] 演示环境：phpbox hosts ${add ? 'add' : 'remove'} ${domain}`] }],
+    onDone: () => { loadSites() },
+  })
+}
+function openSiteRemoveModal(domain: string) {
+  openDanger({
+    title: t('site.removeTitle', { domain }),
+    description: t('site.removeDesc'),
+    warnings: [
+      { text: t('site.warn.conf', { domain }) },
+      { text: t('site.warn.source'), keep: true },
+      { text: t('site.warn.hosts'), keep: true },
+      { text: t('site.warn.rolling'), keep: true },
+    ],
+    checkboxLabel: t('site.removeCheck'),
+    inputLabel: t('mod.confirmInput'),
+    expect: domain,
+    placeholder: t('mod.confirmPlaceholder', { ver: domain }),
+    cliPreview: `phpbox site remove ${domain}`,
+    confirmLabel: t('site.confirmRemove'),
+    onConfirm: () => {
+      dispatchTask(`${t('site.confirmRemove')}·${domain}`, `phpbox site remove ${domain}`,
+        ['site', 'remove', domain], {
+        fallback: [{ d: 400, lines: [`[INFO] 演示环境：phpbox site remove ${domain}`] }],
+        onDone: () => { loadSites() },
+      })
+    },
+  })
+}
+
+// ── 事件委托 ──
 </script>
 
 <template>
@@ -523,30 +597,40 @@ function onSiteSwitch(e: Event, domain: string) {
       <div class="view">
         <div class="view-inner">
 
-          <!-- ═══ 站点（默认首屏）═══ -->
+          <!-- ═══ 站点（默认首屏 · 真实 vhost 状态）═══ -->
           <template v-if="state.route === 'sites'">
             <header class="view-header">
               <div><h1>{{ t('sites.title') }}</h1><p class="view-sub">{{ t('sites.sub') }}</p></div>
+              <div class="header-actions"><button class="btn btn-primary" @click="openSiteModal()">+ {{ t('sites.add') }}</button></div>
             </header>
             <div v-if="state.sites.length === 0" class="empty">
               <div class="empty-icon">🌍</div><h2>{{ t('sites.empty.title') }}</h2><p>{{ t('sites.empty.desc') }}</p>
+              <button class="btn btn-primary" @click="openSiteModal()">{{ t('sites.add') }}</button>
             </div>
-            <div v-else class="summary">
-              <div class="summary-item"><div class="summary-num">{{ state.sites.length }}</div><div class="summary-label">{{ t('sum.sites') }}</div></div>
-              <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.sites.filter(s=>s.health==='up').length }}</div><div class="summary-label">{{ t('sum.healthy') }}</div></div>
-              <div class="summary-item"><div class="summary-num">{{ state.env.NGINX_PORT }}</div><div class="summary-label">{{ t('sum.port') }}</div></div>
-            </div>
-            <div v-if="state.sites.length" class="table-wrap"><table>
-              <thead><tr><th>{{ t('th.domain') }}</th><th>{{ t('th.php') }}</th><th>{{ t('th.health') }}</th><th>{{ t('th.hosts') }}</th></tr></thead>
-              <tbody><tr v-for="s in state.sites" :key="s.domain">
-                <td><a class="site-domain" :href="'http://'+s.domain" target="_blank" rel="noopener"><span class="favicon">{{ s.domain[0].toUpperCase() }}</span>{{ s.domain }}</a></td>
-                <td><select class="php-select" :value="s.php" @change="onSiteSwitch($event, s.domain)">
-                  <option v-for="v in ['8.4','8.2','8.0','7.4']" :key="v" :value="v" :selected="v===s.php">{{ v }}</option>
-                </select></td>
-                <td><span class="mono dim">{{ s.root }}</span></td>
-                <td><span class="status-pill" :class="s.health==='up'?'pill-ok':s.health==='warn'?'pill-warn':'pill-err'"><span class="pill-dot"></span>{{ s.health==='up'?'正常':s.health==='warn'?'降级':'未响应' }}</span></td>
-                <td><span class="chip" :class="s.hosts?'chip-accent':''">{{ s.hosts ? '已解析' : '未解析' }}</span></td>
-              </tr></tbody></table></div>
+            <template v-else>
+              <div class="summary">
+                <div class="summary-item"><div class="summary-num">{{ state.sites.length }}</div><div class="summary-label">{{ t('sum.sites') }}</div></div>
+                <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.sites.filter(s => s.hosts).length }}</div><div class="summary-label">{{ t('sum.healthy') }}</div></div>
+                <div class="summary-item"><div class="summary-num">{{ state.env.NGINX_PORT }}</div><div class="summary-label">{{ t('sum.port') }}</div></div>
+              </div>
+              <div class="table-wrap"><table>
+                <thead><tr><th>{{ t('th.domain') }}</th><th>{{ t('th.php') }}</th><th>{{ t('th.root') }}</th><th>{{ t('th.hosts') }}</th><th></th></tr></thead>
+                <tbody><tr v-for="s in state.sites" :key="s.domain">
+                  <td><a class="site-domain" :href="'http://'+s.domain" target="_blank" rel="noopener"><span class="favicon">{{ s.domain[0].toUpperCase() }}</span>{{ s.domain }}</a></td>
+                  <td><select class="php-select" :value="s.php" @change="onSiteSwitch($event, s.domain)">
+                    <option v-for="v in installedPhp" :key="v" :value="phpVerToKey(v)" :selected="phpVerToKey(v)===s.php">{{ v }}</option>
+                  </select></td>
+                  <td><span class="mono dim">{{ s.root }}</span></td>
+                  <td>
+                    <button v-if="!s.hosts" class="btn btn-sm" @click="hostsToggle(s.domain, true)">{{ t('site.hosts.add') }}</button>
+                    <span v-else class="chip chip-accent">{{ t('site.hosts.added') }}</span>
+                  </td>
+                  <td><div class="row-actions">
+                    <button v-if="s.hosts" class="btn btn-sm" @click="hostsToggle(s.domain, false)">{{ t('site.hostsRemove') }}</button>
+                    <button class="btn btn-sm btn-danger" @click="openSiteRemoveModal(s.domain)">{{ t('common.delete') }}</button>
+                  </div></td>
+                </tr></tbody></table></div>
+            </template>
           </template>
 
           <!-- ═══ 总览（真实 Docker 数据）═══ -->
@@ -815,6 +899,31 @@ function onSiteSwitch(e: Event, domain: string) {
           <button class="btn btn-primary" :disabled="!extDirty || extLoading" @click="extApply()">
             {{ extDirty ? t('ext.applyCount', { n: extSelected.size }) : t('ext.applied') }}
           </button>
+        </div>
+      </div>
+      <div v-else-if="siteModal" class="modal">
+        <div class="modal-head"><h3>{{ t('site.modalTitle') }}</h3><p>{{ t('site.modalSub') }}</p></div>
+        <div class="modal-body">
+          <p v-if="installedPhp.length === 0" class="alert alert-warn">{{ t('site.noPhp') }}</p>
+          <div class="field">
+            <label>{{ t('site.domain') }}</label>
+            <input type="text" v-model="siteDomain" :placeholder="t('site.domainPh')" autocomplete="off">
+          </div>
+          <div class="field">
+            <label>{{ t('site.pickPhp') }}</label>
+            <div class="quick-picks">
+              <button v-for="v in installedPhp" :key="v" class="pick" :class="{ selected: sitePhp === v }"
+                      @click="sitePhp = v">{{ v }}</button>
+            </div>
+          </div>
+          <p v-if="siteErr" class="alert alert-danger">{{ siteErr }}</p>
+          <div class="field"><label>{{ t('site.willRun') }}</label>
+            <div class="cmd-preview"><span class="prompt">$ </span>{{ siteCmdPreview }}</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" @click="closeModal()">{{ t('mod.cancel') }}</button>
+          <button class="btn btn-primary" :disabled="installedPhp.length === 0" @click="confirmSiteAdd()">{{ t('sites.add') }}</button>
         </div>
       </div>
     </div>
