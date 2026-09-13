@@ -8,6 +8,16 @@ import { ListOfflineCache } from '../../bindings/github.com/xiaokentrl/phpbox-de
 import { ListSites, ProbeSiteHealth } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
 import { ListGoProjects } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { ReadEnv } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
+import { Detect as DetectPresence } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/presence'
+
+// 引擎就绪度（§5.1 首启检测）：三条件独立呈现，不合并布尔——开发者要分别知道缺什么。
+// 浏览器降级保留 null（横幅不显示，不做假检测）。
+export async function loadPresence() {
+  if (!inWails()) return
+  try {
+    state.presence = await DetectPresence() ?? null
+  } catch { state.presence = null }
+}
 
 // 容器列表（总览/服务线/Go 状态共用的真实数据源）+ installed 派生
 // installed 与 bash cmd_list 同源：phpbox-service/phpbox-version labels（缺 label 的容器不纳入）
@@ -93,5 +103,5 @@ export async function loadEnv() {
 
 // 启动期统一入口：等 Wails Core 注入后拉全部真实数据
 export function loadAllOnReady() {
-  onWailsReady(() => { loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
+  onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
 }

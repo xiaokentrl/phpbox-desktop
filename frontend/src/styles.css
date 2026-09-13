@@ -259,3 +259,9 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .cmd-palette-item:hover,.cmd-palette-item.active{background:var(--accent-bg);color:var(--accent)}
 .cmd-palette-item .kbd{margin-left:auto;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;background:var(--surface-2);color:var(--text-mute)}
 .cmd-palette-empty{padding:18px 20px;color:var(--text-mute);font-size:13px;text-align:center}
+
+/* ─── 引擎就绪度横幅（§5.1 首启检测 · 三条件独立降级）─── */
+.presence-banner{max-width:var(--content-max);margin:0 auto;padding:20px var(--content-pad-x) 0;display:flex;flex-direction:column;gap:10px}
+.presence-banner .alert{display:flex;flex-direction:column;gap:6px}
+.presence-banner .alert p{margin:0;color:inherit;opacity:.85}
+.presence-banner .cmd-line{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border-2);border-radius:var(--r-xs);padding:6px 10px;color:var(--text-dim);word-break:break-all;user-select:all}

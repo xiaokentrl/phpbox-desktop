@@ -7,6 +7,7 @@ import * as Env from "./env.js";
 import * as GoProjects from "./goprojects.js";
 import * as Offline from "./offline.js";
 import * as Php from "./php.js";
+import * as Presence from "./presence.js";
 import * as Runner from "./runner.js";
 import * as Site from "./site.js";
 export {
@@ -16,6 +17,7 @@ export {
     GoProjects,
     Offline,
     Php,
+    Presence,
     Runner,
     Site
 };
@@ -27,6 +29,7 @@ export type {
     GoProjectEntry,
     OfflineEntry,
     OfflineResult,
+    PresenceStatus,
     SiteEntry,
     SiteHealth
 } from "./models.js";

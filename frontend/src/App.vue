@@ -5,6 +5,7 @@ import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
   openInstall, openDanger, openExt, openSiteModal, closeModal, type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
+import { loadPresence } from './api/data'
 import { Events } from '@wailsio/runtime'
 import { cmpVerDesc } from './utils'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
@@ -265,6 +266,10 @@ window.addEventListener('phpbox:toast', (e) => {
 // ── Docker 真实数据 + installed 派生 ──
 const containers = ref<ContainerSummary[]>([])
 const dockerErr = ref('')
+// 引擎就绪度横幅：任一条件缺失即降级展示（浏览器降级 presence=null 不显示，不做假检测）
+const presence = computed(() => state.presence
+  ? { ...state.presence, degraded: !state.presence.EngineDir || !state.presence.CliInPath || !state.presence.DockerOK }
+  : null)
 async function refreshContainers() { loadContainers() }
 async function loadContainers() {
   dockerErr.value = ''
@@ -287,7 +292,7 @@ async function loadContainers() {
 }
 onMounted(() => {
   initTheme(); loadContainers()
-  onWailsReady(() => { loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
+  onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
   initTrayNav() // 托盘菜单快速跳转（ui:navigate）
   initDaemonEvents() // 长驻进程通道（go run / go logs）
 })
@@ -800,6 +805,23 @@ function initTrayNav() {
       </div>
     </aside>
     <main class="main">
+      <!-- ═══ 引擎就绪度横幅（§5.1 首启检测 · 诚实降级：三条件独立，不做假检测）═══ -->
+      <div v-if="presence?.degraded" class="view-inner presence-banner">
+        <div v-if="!presence.EngineDir" class="alert alert-warn">
+          <strong>{{ t('presence.engine.title') }}</strong>
+          <p>{{ t('presence.engine.desc') }}</p>
+          <code class="cmd-line">~/phpbox/install.sh</code>
+        </div>
+        <div v-else-if="!presence.CliInPath" class="alert alert-warn">
+          <strong>{{ t('presence.cli.title') }}</strong>
+          <p>{{ t('presence.cli.desc') }}</p>
+          <code class="cmd-line">sudo ln -sf "$HOME/phpbox/bin/phpbox" /usr/local/bin/phpbox</code>
+        </div>
+        <div v-if="presence.EngineDir && !presence.DockerOK" class="alert alert-danger">
+          <strong>{{ t('presence.docker.title') }}</strong>
+          <p>{{ presence.DockerErr || t('presence.docker.desc') }}</p>
+        </div>
+      </div>
       <div class="view">
         <div class="view-inner">
 

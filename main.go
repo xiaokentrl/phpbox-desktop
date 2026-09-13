@@ -26,6 +26,7 @@ func main() {
 			application.NewService(&bindings.Site{}),
 			application.NewService(&bindings.GoProjects{}),
 			application.NewService(&bindings.Env{}),
+			application.NewService(&bindings.Presence{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

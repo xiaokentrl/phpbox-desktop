@@ -82,6 +82,8 @@ export const state = reactive({
   daemon: null as DaemonState | null,
   // 各数据域的加载错误（视图切换不丢失）
   dockerErr: '', backupErr: '', offlineErr: '', siteErr: '', envErr: '',
+  // 引擎就绪度（presence.Detect）：null = 未探测（浏览器降级）；字段见绑定 PresenceStatus
+  presence: null as null | { EngineDir: boolean; CliInPath: string; HasEnv: boolean; DockerOK: boolean; DockerErr: string },
   // .env 编辑区（settings 模块）
   envRows: [] as EnvRow[],
   envDraft: {} as Record<string, string>,

@@ -18,6 +18,9 @@ import * as health$0 from "../engine/health/models.js";
 import * as offline$0 from "../engine/offline/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as presence$0 from "../engine/presence/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as site$0 from "../engine/site/models.js";
 
 /**
@@ -53,6 +56,11 @@ export type OfflineEntry = offline$0.Entry;
  * OfflineResult 透传引擎类型。
  */
 export type OfflineResult = offline$0.Result;
+
+/**
+ * PresenceStatus 透传引擎类型。
+ */
+export type PresenceStatus = presence$0.Status;
 
 /**
  * SiteEntry 透传引擎类型。
