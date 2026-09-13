@@ -89,6 +89,7 @@ export const state = reactive({
   offlineVerifyState: {} as Record<string, string>,
   task: null as Task | null,
   modal: null as InstallModal | DangerModal | ExtModal | SiteModal | null,
+  palette: false, // 命令面板（⌘K）
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
 })
 

@@ -174,6 +174,84 @@ function openUninstallModal(kind: string, ver: string) {
   })
 }
 
+// ── 命令面板（⌘K）——原型 4.16 契约；条目只收录真实能力（GUI 不承诺不存在的能力）──
+// 原型的 layout 四条与 cmd.scanGo（'go,server' 非真实签名）不收录：布局拖拽未实装、真实命令是 'phpbox go server'
+const CMD_ITEMS: { labelKey: string; kbd: string; route?: Route; run?: () => void }[] = [
+  { labelKey: 'nav.sites', kbd: '⌘1', route: 'sites' },
+  { labelKey: 'nav.php', kbd: '⌘2', route: 'php' },
+  { labelKey: 'nav.mysql', kbd: '⌘3', route: 'mysql' },
+  { labelKey: 'nav.pgsql', kbd: '⌘4', route: 'pgsql' },
+  { labelKey: 'nav.redis', kbd: '⌘5', route: 'redis' },
+  { labelKey: 'nav.nginx', kbd: '⌘6', route: 'nginx' },
+  { labelKey: 'nav.go', kbd: '⌘7', route: 'go' },
+  { labelKey: 'nav.backup', kbd: '⌘8', route: 'backup' },
+  { labelKey: 'nav.settings', kbd: '', route: 'settings' },
+  { labelKey: 'nav.offline', kbd: '', route: 'offline' },
+  { labelKey: 'nav.overview', kbd: '⌘9', route: 'overview' },
+  { labelKey: 'cmd.newSite', kbd: '', run: () => openSiteModal() },
+  { labelKey: 'cmd.backup', kbd: '', run: () => { setRoute('backup'); backupNow() } },
+  { labelKey: 'cmd.doctor', kbd: '', run: () => { setRoute('overview'); runDiagnostics() } },
+  { labelKey: 'cmd.theme', kbd: '', run: () => { themePop.value = true } },
+]
+const paletteQuery = ref('')
+const paletteActive = ref(0)
+const paletteInputEl = ref<HTMLInputElement | null>(null)
+const paletteMatches = computed(() => {
+  const q = paletteQuery.value.trim().toLowerCase()
+  if (!q) return CMD_ITEMS
+  return CMD_ITEMS.filter(it =>
+    t(it.labelKey).toLowerCase().includes(q) || it.labelKey.toLowerCase().includes(q))
+})
+function openCmdPalette() {
+  state.palette = true
+  paletteQuery.value = ''; paletteActive.value = 0
+  nextTick(() => paletteInputEl.value?.focus())
+}
+function closeCmdPalette() { state.palette = false }
+function execCmd(it: { route?: Route; run?: () => void }) {
+  closeCmdPalette()
+  if (it.route) { setRoute(it.route); document.querySelector('.view')?.scrollTo({ top: 0 }) }
+  else it.run?.()
+}
+function onPaletteKey(e: KeyboardEvent) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    const n = paletteMatches.value.length
+    if (!n) return
+    paletteActive.value = (paletteActive.value + (e.key === 'ArrowDown' ? 1 : -1) + n) % n
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    const it = paletteMatches.value[paletteActive.value]
+    if (it) execCmd(it)
+  }
+}
+
+// ── 全局快捷键（原型 3350：Esc 面板 > 弹窗；⌘K 切换；⌘R 同步；⌘1-9 路由）──
+const ROUTE_KEYS: Route[] = ['sites', 'php', 'mysql', 'pgsql', 'redis', 'nginx', 'go', 'backup', 'overview']
+function onGlobalKey(e: KeyboardEvent) {
+  if (e.key === 'Escape') {
+    if (state.palette) { closeCmdPalette(); return }
+    if (state.modal) { closeModal(); return }
+    return
+  }
+  const mod = e.ctrlKey || e.metaKey
+  if (mod && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    state.palette ? closeCmdPalette() : openCmdPalette()
+    return
+  }
+  if (mod && e.key.toLowerCase() === 'r') {
+    e.preventDefault()
+    loadContainers(); toastBus(t('foot.sync'), 'ok', 1200)
+    return
+  }
+  if (mod && /^[1-9]$/.test(e.key)) {
+    const r = ROUTE_KEYS[parseInt(e.key) - 1]
+    if (r) { e.preventDefault(); setRoute(r); document.querySelector('.view')?.scrollTo({ top: 0 }) }
+  }
+}
+onMounted(() => document.addEventListener('keydown', onGlobalKey))
+
 // ── Toast ──
 const toasts = ref<{ id: number; msg: string; kind: string }[]>([])
 let toastSeq = 0
@@ -705,6 +783,7 @@ function initTrayNav() {
         </template>
       </nav>
       <div class="sidebar-foot">
+        <button class="btn-ghost" @click="openCmdPalette"><span>⌘K {{ t('foot.palette') }}</span></button>
         <button class="btn-ghost" @click="refreshContainers"><span>↻ {{ t('btn.refresh') }}</span></button>
         <button class="btn-ghost" @click="setAppLocale(state.locale === 'zh-CN' ? 'en-US' : 'zh-CN')">
           <span>{{ state.locale === 'zh-CN' ? '🌐 English' : '🌐 中文' }}</span>
@@ -1110,6 +1189,21 @@ function initTrayNav() {
     </div>
     <div class="toast-root">
       <div v-for="x in toasts" :key="x.id" class="toast" :class="x.kind">{{ x.msg }}</div>
+    </div>
+    <div class="cmd-palette" :class="{ open: state.palette }" @mousedown.self="closeCmdPalette">
+      <div class="cmd-palette-box" @keydown="onPaletteKey">
+        <input ref="paletteInputEl" v-model="paletteQuery" :placeholder="t('cmd.placeholder')"
+               spellcheck="false" autocomplete="off" @input="paletteActive = 0">
+        <div class="cmd-palette-list">
+          <div v-for="(it, i) in paletteMatches" :key="it.labelKey"
+               class="cmd-palette-item" :class="{ active: i === paletteActive }"
+               @mouseenter="paletteActive = i" @click="execCmd(it)">
+            <span>{{ t(it.labelKey) }}</span>
+            <span v-if="it.kbd" class="kbd">{{ it.kbd }}</span>
+          </div>
+          <div v-if="paletteMatches.length === 0" class="cmd-palette-empty">{{ t('cmd.empty') }}</div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
