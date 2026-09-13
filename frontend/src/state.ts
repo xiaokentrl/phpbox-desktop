@@ -17,6 +17,17 @@ export interface TaskLine { t: string; c?: '' | 'ok' | 'err' | 'meta' | 'dim' | 
 export type TaskStage = 'configured' | 'preparing' | 'committed' | 'rolling_back' | 'absent'
 export interface Task { label: string; cli: string; lines: TaskLine[]; phase: 'running' | 'success' | 'failed'; stage: TaskStage | null }
 
+// 通知中心条目（§2.2）：kind 对应四个真实信号源；ts 排序用；dedup 时间内同 key 合并
+export type NotifKind = 'task_done' | 'task_fail' | 'daemon_down' | 'offline_quota' | 'container_exit'
+export interface Notif {
+  id: number
+  kind: NotifKind
+  key: string          // 去重键（如同容器名+事件）
+  msg: string
+  at: number           // Date.now()
+  read: boolean
+}
+
 // 危险确认弹窗载荷（§8.2 三条件：警告清单 + 勾选 + 输入匹配）
 export interface DangerModal {
   kind: 'danger'
@@ -93,6 +104,10 @@ export const state = reactive({
   // 离线缓存逐条校验状态（key: svc/ver）
   offlineVerifyState: {} as Record<string, string>,
   task: null as Task | null,
+  // 通知中心（§2.2）：真实信号源——任务完成/失败、daemon 断连、离线库阈值、
+  // 容器意外退出。只记录真实发生的事件，不做定时器轮询类的推断
+  notifications: [] as Notif[],
+  notifOpen: false,
   modal: null as InstallModal | DangerModal | ExtModal | SiteModal | null,
   palette: false, // 命令面板（⌘K）
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
@@ -164,15 +179,34 @@ export function finishTask(phase: 'success' | 'failed', opts: { doneMsg?: string
   task.phase = phase
   if (phase === 'success') {
     toastBus(opts.doneMsg || t('task.done') + ': ' + task.label, 'ok')
+    pushNotif('task_done', task.label, task.label + ' ✓')
     if (opts.onDone) opts.onDone()
   } else {
     toastBus(t('task.failed') + ': ' + task.label, 'err')
+    pushNotif('task_fail', task.label, task.label)
   }
 }
 export function clearTask(): void { state.task = null }
 export function taskRunning(): boolean {
   return !!state.task && state.task.phase === 'running'
 }
+
+// ── 通知中心（§2.2 四真实源）──
+let notifSeq = 0
+const notifSeen = new Map<string, number>() // key → 上次推送时间（去重窗口 60s）
+const NOTIF_DEDUP_MS = 60_000
+
+export function pushNotif(kind: NotifKind, key: string, msg: string): void {
+  const now = Date.now()
+  const last = notifSeen.get(kind + '|' + key) ?? 0
+  if (now - last < NOTIF_DEDUP_MS) return // 窗口内同源事件合并（如容器反复退出只报一次）
+  notifSeen.set(kind + '|' + key, now)
+  state.notifications.unshift({ id: ++notifSeq, kind, key, msg, at: now, read: false })
+  if (state.notifications.length > 50) state.notifications.length = 50 // 上限防泄漏
+}
+export function notifUnread(): number { return state.notifications.filter(n => !n.read).length }
+export function markNotifsRead(): void { for (const n of state.notifications) n.read = true }
+export function clearNotifs(): void { state.notifications = [] }
 
 export function runTask(label: string, cli: string, steps: Step[], opts: { doneMsg?: string; onDone?: () => void } = {}): boolean {
   if (!startTask(label, cli)) return false

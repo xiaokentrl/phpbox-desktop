@@ -1,6 +1,6 @@
 // 数据加载层：各 Wails 绑定 → state 单例。视图与壳只调用，不直接碰绑定。
 import { inWails } from './task'
-import { state, toastBus, type OfflineRow, type SiteEntry, type GoProjectRow, type BackupRow, type EnvRow } from '../state'
+import { state, toastBus, pushNotif, taskRunning, type OfflineRow, type SiteEntry, type GoProjectRow, type BackupRow, type EnvRow } from '../state'
 import { cmpVerDesc } from '../utils'
 import { ListContainers } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
@@ -21,6 +21,9 @@ export async function loadPresence() {
 
 // 容器列表（总览/服务线/Go 状态共用的真实数据源）+ installed 派生
 // installed 与 bash cmd_list 同源：phpbox-service/phpbox-version labels（缺 label 的容器不纳入）
+// 通知源（§2.2）：容器意外退出 = 上次刷新时 running、本次 exited 且非任务运行中
+// （任务运行中的退出是事务的正常部分——如卸载重建，不误报）
+const prevContainerStates = new Map<string, string>()
 export async function loadContainers() {
   state.dockerErr = ''
   try {
@@ -36,6 +39,18 @@ export async function loadContainers() {
     for (const [svc, set] of Object.entries(map)) {
       state.installed[svc] = [...set].sort(cmpVerDesc)
     }
+    // 意外退出检测：仅对 phpbox 管理容器（有 Service），且无任务在跑（任务中退出属事务）
+    if (!taskRunning()) {
+      for (const c of rows) {
+        const name = c.Name.replace(/^\//, '')
+        const prev = prevContainerStates.get(name)
+        if (c.Service && prev === 'running' && c.State !== 'running') {
+          pushNotif('container_exit', name, `${name} → ${c.State}`)
+        }
+      }
+    }
+    prevContainerStates.clear()
+    for (const c of rows) prevContainerStates.set(c.Name.replace(/^\//, ''), c.State)
   } catch (e) { state.dockerErr = String(e) }
 }
 
@@ -56,6 +71,11 @@ export async function loadOffline() {
     state.offlineCache = rows.map(r => ({
       svc: r.svc, ver: r.ver, path: r.path, size: Number(r.size), files: Number(r.files), kind: r.kind,
     })) as OfflineRow[]
+    // 通知源（§2.2）：离线库阈值 > 2G 进通知中心（真实字节数求和，非估算）
+    const total = state.offlineCache.reduce((s, r) => s + r.size, 0)
+    if (total > 2 * 1024 ** 3) {
+      pushNotif('offline_quota', 'offline', `${(total / 1024 ** 3).toFixed(1)}G`)
+    }
   } catch (e) { state.offlineErr = String(e) }
 }
 

@@ -3,7 +3,8 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
-  openInstall, openDanger, openExt, openSiteModal, closeModal, type Route, type ContainerRow } from './state'
+  openInstall, openDanger, openExt, openSiteModal, closeModal, pushNotif, notifUnread, markNotifsRead, clearNotifs,
+  type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { loadPresence, loadContainers } from './api/data'
 import { Events } from '@wailsio/runtime'
@@ -216,6 +217,20 @@ function openCmdPalette() {
   nextTick(() => paletteInputEl.value?.focus())
 }
 function closeCmdPalette() { state.palette = false }
+
+// ── 通知中心（§2.2 四真实源）──
+function toggleNotifs() {
+  themePop.value = false // 弹层互斥
+  state.notifOpen = !state.notifOpen
+  if (state.notifOpen) markNotifsRead()
+}
+function notifIcon(kind: string): string {
+  return kind === 'task_done' ? '✓' : kind === 'task_fail' ? '✕' : kind === 'daemon_down' ? '⛔'
+    : kind === 'offline_quota' ? '🗄️' : '⏹'
+}
+function notifMsg(n: { kind: string; msg: string }): string {
+  return t('notif.' + n.kind) + n.msg
+}
 function execCmd(it: { route?: Route; run?: () => void }) {
   closeCmdPalette()
   if (it.route) { setRoute(it.route); document.querySelector('.view')?.scrollTo({ top: 0 }) }
@@ -259,6 +274,8 @@ function onGlobalKey(e: KeyboardEvent) {
   }
 }
 onMounted(() => document.addEventListener('keydown', onGlobalKey))
+// 全局点击：关闭侧栏弹层（主题/通知）——原型该缺陷一并修复
+onMounted(() => document.addEventListener('click', () => { themePop.value = false; state.notifOpen = false }))
 
 // ── Toast ──
 const toasts = ref<{ id: number; msg: string; kind: string }[]>([])
@@ -723,6 +740,7 @@ function initDaemonEvents() {
     state.daemon.failed = !!d.failed
     if (!d.running) { // 退出：任务模型刷新项目状态
       toastBus(`${state.daemon.label}: ${d.failed ? t('dm.failed') : t('dm.exited')}`, d.failed ? 'err' : 'info')
+      if (d.failed) pushNotif('daemon_down', state.daemon.id, state.daemon.label) // §2.2 通知源：daemon 断连
     }
   })
 }
@@ -823,11 +841,15 @@ function initTrayNav() {
       </nav>
       <div class="sidebar-foot">
         <button class="btn-ghost" @click="openCmdPalette"><span>⌘K {{ t('foot.palette') }}</span></button>
+        <button class="btn-ghost notif-btn" @click.stop="toggleNotifs">
+          <span>🔔</span>
+          <span v-if="notifUnread()" class="notif-badge">{{ notifUnread() > 9 ? '9+' : notifUnread() }}</span>
+        </button>
         <button class="btn-ghost" @click="refreshContainers"><span>↻ {{ t('btn.refresh') }}</span></button>
         <button class="btn-ghost" @click="setAppLocale(state.locale === 'zh-CN' ? 'en-US' : 'zh-CN')">
           <span>{{ state.locale === 'zh-CN' ? '🌐 English' : '🌐 中文' }}</span>
         </button>
-        <button class="btn-ghost" @click.stop="themePop = !themePop">
+        <button class="btn-ghost" @click.stop="themePop = !themePop; state.notifOpen = false">
           <span>🎨 {{ themeName }}</span>
         </button>
         <div v-if="themePop" class="theme-pop">
@@ -835,6 +857,23 @@ function initTrayNav() {
                   @click.stop="pickTheme(th.id)">
             <span>{{ state.locale === 'en-US' ? th.en : th.zh }}</span>
           </button>
+        </div>
+        <!-- 通知中心（§2.2：四真实源，无模拟推送） -->
+        <div v-if="state.notifOpen" class="notif-pop">
+          <div class="notif-head">
+            <span>{{ t('notif.title') }}</span>
+            <button v-if="state.notifications.length" class="btn btn-sm" @click.stop="clearNotifs()">{{ t('notif.clear') }}</button>
+          </div>
+          <div v-if="state.notifications.length === 0" class="notif-empty">{{ t('notif.empty') }}</div>
+          <div v-else class="notif-list">
+            <div v-for="n in state.notifications" :key="n.id" class="notif-item" :class="{ unread: !n.read }">
+              <span class="notif-icon">{{ notifIcon(n.kind) }}</span>
+              <div class="notif-body">
+                <div class="notif-msg">{{ notifMsg(n) }}</div>
+                <div class="notif-time">{{ new Date(n.at).toLocaleTimeString() }}</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </aside>
