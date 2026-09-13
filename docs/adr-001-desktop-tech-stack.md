@@ -87,3 +87,5 @@ phpbox（纯 Bash 的本地 Docker LNMP 管理器，70 文件/155 函数/七闸�
 触发器 5/6（评估窗口/时间检查点）随本决策消化；新增回看点：**v3 项目停滞（≥12 个月无 beta 更新）且出现阻塞 → 重估（含回退 v2）**。
 
 流程备注：外部规约 v2.0 声称"已在 ADR-001 Amendment 4 记录理由"——经核验该记录当时并不存在，本 Amendment 为补写（事实在先、记录在后），并对外部文档的无据断言予以更正。
+
+**Amendment 4 补充（同日，首次 Linux 构建实测）**：wails3 doctor 报 ready 为**误报**——未检查编译链。实测根因链：gcc 未装 → Go 自动 CGO_ENABLED=0 → wails linux 文件（`pointer` 定义于 cgo 标签下）全部 undefined；pkg-config 与 libgtk-3-dev/libwebkit2gtk-4.1-dev 亦缺。Linux 构建前置（需入安装文档）：`sudo apt install build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev`。引擎纯 Go 部分不受影响（phpboxd list 正常）。
