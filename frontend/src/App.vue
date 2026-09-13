@@ -238,17 +238,10 @@ function runDiagnostics() {
 
 // ── PHP 扩展管理弹窗（真实状态 + 目标集合 → 逐个 add/remove spawn）──
 const EXT_LIB = ['apcu','memcached','mongodb','amqp','yaml','ssh2','swoole','event','grpc','protobuf','igbinary','msgpack','ds','uv','pthreads']
-const EXT_PRESETS: Record<string, string[]> = {
-  default: ['gd','redis','pdo_mysql','mysqli','pgsql','pdo_pgsql','zip','bcmath','intl','opcache','exif','soap','sockets','imagick'],
-  minimal: ['opcache'],
-  web:     ['gd','redis','pdo_mysql','mysqli','pgsql','pdo_pgsql','zip','bcmath','intl','opcache','exif','soap','sockets','imagick'],
-  debug:   ['gd','redis','pdo_mysql','mysqli','pgsql','pdo_pgsql','zip','bcmath','intl','opcache','exif','soap','sockets','imagick','xdebug'],
-}
 const extModal = computed(() => state.modal?.kind === 'ext' ? state.modal : null)
 const extInstalled = ref<string[]>([])   // extensions.env 真实状态
 const extExtra = ref<string[]>([])       // 本次手动添加
 const extSelected = ref<Set<string>>(new Set())
-const extPreset = ref('')
 const extInput = ref('')
 const extErr = ref('')
 const extLoading = ref(false)
@@ -258,11 +251,11 @@ watch(() => state.modal?.kind, async (k) => {
   const m = extModal.value
   if (!m) return
   extInstalled.value = []; extExtra.value = []; extSelected.value = new Set()
-  extPreset.value = ''; extInput.value = ''; extErr.value = ''; extLoading.value = true
+  extInput.value = ''; extErr.value = ''; extLoading.value = true
   if (!inWails()) { // 浏览器降级：演示数据
-    extInstalled.value = [...EXT_PRESETS.debug]
-    extSelected.value = new Set(EXT_PRESETS.debug)
-    extPreset.value = 'debug'
+    const demo = ['gd','redis','pdo_mysql','mysqli','pgsql','pdo_pgsql','zip','bcmath','intl','opcache','exif','soap','sockets','imagick','xdebug']
+    extInstalled.value = demo
+    extSelected.value = new Set(demo)
     extLoading.value = false
     return
   }
@@ -277,11 +270,6 @@ watch(() => state.modal?.kind, async (k) => {
 const extEnabledList = computed(() => [...extInstalled.value, ...extExtra.value])
 const extSuggestList = computed(() =>
   EXT_LIB.filter(e => !extInstalled.value.includes(e) && !extExtra.value.includes(e)).slice(0, 12))
-// 已知扩展集合：所有列表中出现过的（预设 ∪ 已装 ∪ 库）——目标集合里未知项视为"删除"外的保留项
-const extKnown = computed(() => {
-  const s = new Set<string>([...extInstalled.value, ...extExtra.value, ...EXT_LIB, ...Object.values(EXT_PRESETS).flat()])
-  return s
-})
 const extDirty = computed(() => {
   const on = extSelected.value
   const orig = new Set(extInstalled.value)
@@ -295,15 +283,6 @@ function extToggle(e: string) {
   const s = new Set(extSelected.value)
   if (s.has(e)) s.delete(e); else s.add(e)
   extSelected.value = s
-  extPreset.value = ''
-}
-function extPickPreset(p: string) {
-  extPreset.value = p
-  extSelected.value = new Set(EXT_PRESETS[p] ?? [])
-  // 预设里未知的新扩展也进入 extra，保证 UI 可见
-  for (const e of EXT_PRESETS[p] ?? []) {
-    if (!extInstalled.value.includes(e) && !extExtra.value.includes(e)) extExtra.value.push(e)
-  }
 }
 function extAddManual() {
   const name = extInput.value.trim()
@@ -313,7 +292,6 @@ function extAddManual() {
   extExtra.value.push(name)
   const s = new Set(extSelected.value); s.add(name); extSelected.value = s
   extInput.value = ''
-  extPreset.value = ''
 }
 // 应用：逐个 add/remove 真实 spawn（每个重建镜像），串行执行，失败即停
 function extApply() {
@@ -1025,14 +1003,6 @@ function initTrayNav() {
           <p v-if="extErr" class="alert alert-danger">{{ t('ext.loadErr') }}: {{ extErr }}</p>
           <p v-else-if="extLoading" class="dim">{{ t('task.running') }}</p>
           <template v-else>
-            <div class="field">
-              <label>{{ t('ext.preset') }}</label>
-              <div class="quick-picks">
-                <button v-for="p in ['default','minimal','web','debug']" :key="p" class="pick"
-                        :class="{ selected: extPreset === p }" @click="extPickPreset(p)">{{ t('ext.preset.'+p) }}</button>
-              </div>
-              <div class="hint">{{ t('ext.presetHint') }}</div>
-            </div>
             <div class="field">
               <div style="display:flex;justify-content:space-between;align-items:center">
                 <label>{{ t('ext.enabled') }}</label>
