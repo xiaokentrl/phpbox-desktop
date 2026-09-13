@@ -35,6 +35,8 @@ export interface InstallModal {
 }
 // 备份归档行（与 Go BackupEntry 对齐：file/path/size/at）
 export interface BackupRow { file: string; path: string; size: number; at: string }
+// 离线缓存行（与 Go OfflineEntry 对齐）
+export interface OfflineRow { svc: string; ver: string; path: string; size: number; files: number; kind: string }
 // PHP 扩展弹窗载荷（真实状态经 Php.ReadPhpExtensions 加载）
 export interface ExtModal {
   kind: 'ext'
@@ -60,6 +62,8 @@ export const state = reactive({
   installed: { php:['8.4','8.2','8.0','7.4'], mysql:['8.4','8.0','5.7'], pgsql:['17'], redis:['8'], nginx:['alpine'] } as Record<string, string[]>,
   // 真实数据：经 Backup 绑定扫描 ~/phpbox/backups/ 加载
   backups: [] as BackupRow[],
+  // 真实数据：经 Offline 绑定扫描 ~/phpbox/offline/ 加载
+  offlineCache: [] as OfflineRow[],
   task: null as Task | null,
   modal: null as InstallModal | DangerModal | ExtModal | null,
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,

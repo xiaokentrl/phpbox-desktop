@@ -8,6 +8,7 @@ import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
+import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
@@ -41,7 +42,7 @@ function go(r: string) { setRoute(r as Route) }
 function countFor(id: string): number | null {
   if (id === 'sites') return state.sites.length || null
   if (id === 'backup') return state.backups.length || null
-  if (id === 'offline') return 10
+  if (id === 'offline') return state.offlineCache.length || null
   const list = (state.installed as Record<string, string[]>)[id]
   return list ? list.length || null : null
 }
@@ -188,8 +189,11 @@ async function loadContainers() {
   try { containers.value = (await ListContainers()) ?? [] }
   catch (e) { dockerErr.value = String(e) }
 }
-onMounted(() => { initTheme(); loadContainers(); onWailsReady(loadBackups) }) // 备份列表须等 Wails Core 注入完成
-watch(() => state.route, (r) => { if (r === 'backup') loadBackups() }) // 进入备份页刷新归档列表
+onMounted(() => { initTheme(); loadContainers(); onWailsReady(() => { loadBackups(); loadOffline() }) })
+watch(() => state.route, (r) => {
+  if (r === 'backup') loadBackups()
+  if (r === 'offline') loadOffline()
+})
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
 const drawerCollapsed = ref(false)
@@ -401,6 +405,67 @@ function openBackupDeleteModal(b: { file: string; size: number }) {
   })
 }
 
+// ── 离线缓存（真实目录树：Offline 绑定扫描 ~/phpbox/offline/）──
+const offlineErr = ref('')
+const offlineVerifyState = ref<Record<string, 'busy' | 'ok' | 'bad' | string>>({}) // key: svc/ver
+async function loadOffline() {
+  offlineErr.value = ''
+  if (!inWails()) return // 浏览器降级：保留空列表
+  try {
+    const rows = (await ListOfflineCache()) ?? []
+    state.offlineCache = rows.map(r => ({
+      svc: r.svc, ver: r.ver, path: r.path, size: Number(r.size), files: Number(r.files), kind: r.kind,
+    }))
+  } catch (e) { offlineErr.value = String(e) }
+}
+const offlineTotal = computed(() => state.offlineCache.reduce((s, r) => s + r.size, 0))
+async function verifyOffline(svc: string, ver: string) {
+  const key = `${svc}/${ver}`
+  if (!inWails()) { toastBus(t('off.browserHint'), 'info'); return }
+  offlineVerifyState.value[key] = 'busy'
+  try {
+    const res = await VerifyOfflineCache(svc, ver)
+    offlineVerifyState.value[key] = res?.ok ? 'ok' : (res?.detail || 'bad')
+    toastBus(`${key}: ${res?.detail ?? ''}`, res?.ok ? 'ok' : 'err', 5000)
+  } catch (e) {
+    offlineVerifyState.value[key] = 'bad'
+    toastBus(String(e), 'err', 5000)
+  }
+}
+async function verifyOfflineAll() {
+  let ok = 0
+  for (const r of state.offlineCache) {
+    await verifyOffline(r.svc, r.ver)
+    if (offlineVerifyState.value[`${r.svc}/${r.ver}`] === 'ok') ok++
+  }
+  toastBus(t('off.verifyAllDone', { ok, total: state.offlineCache.length }), ok === state.offlineCache.length ? 'ok' : 'info')
+}
+function openOfflinePruneModal(r: { svc: string; ver: string; size: number; files: number }) {
+  openDanger({
+    title: t('off.pruneTitle'),
+    description: `${r.svc} ${r.ver} · ${fmtSize(r.size)} · ${r.files} ${t('off.files')}`,
+    warnings: [
+      { text: t('off.warn.del', { svc: r.svc, ver: r.ver, size: fmtSize(r.size) }) },
+      { text: t('off.warn.redownload') },
+      { text: t('off.warn.runtime'), keep: true },
+    ],
+    checkboxLabel: t('off.pruneCheck'),
+    inputLabel: t('off.confirmInput'),
+    expect: r.ver,
+    placeholder: t('mod.confirmPlaceholder', { ver: r.ver }),
+    cliPreview: `rm -rf ~/phpbox/offline/${r.svc}/${r.ver}/`,
+    confirmLabel: t('off.confirmPrune'),
+    onConfirm: async () => {
+      if (!inWails()) { toastBus(t('off.browserHint'), 'info'); return }
+      try {
+        await PruneOfflineCache(r.svc, r.ver)
+        toastBus(`${t('off.confirmPrune')} ✓ ${r.svc}/${r.ver}`, 'ok')
+        loadOffline()
+      } catch (e) { toastBus(String(e), 'err', 5000) }
+    },
+  })
+}
+
 // ── 事件委托（站点切换等）──
 function onSiteSwitch(e: Event, domain: string) {
   const sel = e.target as HTMLSelectElement
@@ -567,8 +632,39 @@ function onSiteSwitch(e: Event, domain: string) {
               </tr></tbody></table></div>
           </template>
           <template v-else-if="state.route === 'offline'">
-            <header class="view-header"><div><h1>Offline Cache</h1><p class="view-sub">Zero-network installs rely on this</p></div></header>
-            <div class="summary"><div class="summary-item"><div class="summary-num">1.3 GB</div><div class="summary-label">Total</div></div><div class="summary-item"><div class="summary-num">10</div><div class="summary-label">Entries</div></div></div>
+            <header class="view-header"><div><h1>{{ t('nav.offline') }}</h1><p class="view-sub">{{ t('off.sub') }}</p></div>
+              <div class="header-actions">
+                <button class="btn" :disabled="!state.offlineCache.length" @click="verifyOfflineAll()">{{ t('off.verifyAll') }}</button>
+              </div></header>
+            <p v-if="offlineErr" class="alert alert-danger">{{ t('off.loadErr') }}: {{ offlineErr }}</p>
+            <div v-if="state.offlineCache.length === 0 && !offlineErr" class="empty">
+              <div class="empty-icon">🗄️</div><h2>{{ t('off.empty') }}</h2><p>{{ t('off.emptyDesc') }}</p>
+            </div>
+            <template v-else-if="!offlineErr">
+              <div class="summary">
+                <div class="summary-item"><div class="summary-num">{{ fmtSize(offlineTotal) }}</div><div class="summary-label">{{ t('off.total') }}</div></div>
+                <div class="summary-item"><div class="summary-num">{{ state.offlineCache.length }}</div><div class="summary-label">{{ t('off.entries') }}</div></div>
+                <div class="summary-item"><div class="summary-num">{{ new Set(state.offlineCache.map(r => r.svc)).size }}</div><div class="summary-label">{{ t('off.services') }}</div></div>
+              </div>
+              <div class="table-wrap"><table>
+                <thead><tr><th style="width:16%">{{ t('nav.services') }}</th><th style="width:12%">{{ t('th.php') }}</th><th style="width:12%">{{ t('th.size') }}</th><th style="width:10%">{{ t('off.files') }}</th><th style="width:26%">{{ t('th.state') }}</th><th></th></tr></thead>
+                <tbody><tr v-for="r in state.offlineCache" :key="r.svc+'/'+r.ver">
+                  <td><div class="svc-cell"><span class="svc-icon">{{ {php:'🐘',mysql:'🐬',pgsql:'🐘',redis:'⚡',nginx:'🌐'}[r.svc] || '📦' }}</span>{{ r.svc }}</div></td>
+                  <td><span class="chip chip-accent">{{ r.ver }}</span></td>
+                  <td><span class="mono dim">{{ fmtSize(r.size) }}</span></td>
+                  <td><span class="mono dim">{{ r.files }}</span></td>
+                  <td>
+                    <span v-if="offlineVerifyState[r.svc+'/'+r.ver] === 'busy'" class="status-pill pill-warn"><span class="pill-dot"></span>{{ t('task.running') }}</span>
+                    <span v-else-if="offlineVerifyState[r.svc+'/'+r.ver] === 'ok'" class="status-pill pill-ok"><span class="pill-dot"></span>{{ t('health.up') }}</span>
+                    <span v-else-if="offlineVerifyState[r.svc+'/'+r.ver]" class="status-pill pill-err"><span class="pill-dot"></span>{{ offlineVerifyState[r.svc+'/'+r.ver] }}</span>
+                    <span v-else class="chip">{{ r.kind === 'closure' ? 'apk+pecl' : 'image tar' }}</span>
+                  </td>
+                  <td><div class="row-actions">
+                    <button class="btn btn-sm" @click="verifyOffline(r.svc, r.ver)">{{ t('off.verify') }}</button>
+                    <button class="btn btn-sm btn-danger" @click="openOfflinePruneModal(r)">{{ t('off.prune') }}</button>
+                  </div></td>
+                </tr></tbody></table></div>
+            </template>
           </template>
           <template v-else-if="state.route === 'settings'">
             <header class="view-header"><div><h1>{{ t('nav.settings') }}</h1><p class="view-sub">Theme · Language · Layout</p></div></header>
