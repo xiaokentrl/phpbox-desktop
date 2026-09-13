@@ -173,6 +173,35 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .alert{padding:11px 14px;border-radius:var(--r-sm);font-size:12.5px;line-height:1.6;border:1px solid transparent}
 .alert-warn{background:var(--warn-bg);border-color:rgba(var(--warn-rgb),.25);color:var(--warn)}
 .alert-danger{background:var(--danger-bg);border-color:rgba(var(--danger-rgb),.25);color:var(--danger)}
+
+/* ─── 服务版本卡片 ─── */
+.version-card{padding:16px;display:flex;flex-direction:column;gap:12px}
+.version-card-head{display:flex;align-items:center;justify-content:space-between}
+.version-tag{font-family:var(--mono);font-size:13.5px;font-weight:600;color:var(--accent);background:var(--accent-bg);padding:3px 10px;border-radius:var(--r-sm)}
+.version-card-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:2px}
+
+/* ─── 危险操作确认弹窗（勾选 + 输入匹配双条件）─── */
+.btn-danger-solid{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn-danger-solid:disabled{opacity:.45;cursor:not-allowed}
+.danger-header{display:flex;align-items:flex-start;gap:14px;padding:22px 22px 6px;flex-shrink:0}
+.danger-icon{width:42px;height:42px;border-radius:50%;flex-shrink:0;background:var(--danger-bg);color:var(--danger);display:grid;place-items:center;font-size:20px}
+.danger-header h3{font-size:17px;font-weight:600;letter-spacing:-.2px;margin-top:4px}
+.danger-header p{color:var(--text-dim);font-size:13px;margin-top:5px}
+.danger-list{list-style:none;padding:12px 14px;background:var(--danger-bg);border-radius:var(--r-sm);font-size:12.5px;line-height:1.7;color:var(--danger);display:flex;flex-direction:column;gap:4px}
+.danger-list li::before{content:'⚠  ';font-weight:700;margin-right:4px}
+.danger-list li.keep::before{content:'✓  ';color:var(--ok)}
+.danger-list li.keep{color:var(--text-dim)}
+.danger-input-wrap{display:flex;flex-direction:column;gap:6px}
+.danger-input-wrap label{font-size:12.5px;color:var(--text-dim);font-weight:500}
+.danger-input-wrap label .key{font-family:var(--mono);background:var(--danger-bg);color:var(--danger);padding:1px 7px;border-radius:4px;font-weight:600;font-size:12px}
+.danger-input-wrap input{font-weight:600;letter-spacing:.5px}
+.danger-input-wrap input.match{border-color:var(--ok);box-shadow:0 0 0 3px var(--ok-bg)}
+.danger-check{display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border:1px solid var(--border);border-radius:var(--r-sm);cursor:pointer;transition:all .13s;background:var(--bg)}
+.danger-check:hover{border-color:var(--danger)}
+.danger-check.checked{background:var(--danger-bg);border-color:var(--danger)}
+.danger-check input{width:16px;height:16px;flex-shrink:0;margin-top:3px;accent-color:var(--danger);cursor:pointer}
+.danger-check .check-label{font-size:12.5px;line-height:1.55;color:var(--text-dim)}
+
 .toast-root{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:200;pointer-events:none}
 .toast{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-sm);padding:11px 16px;font-size:13px;box-shadow:var(--shadow);animation:toastIn .2s ease-out;pointer-events:auto;max-width:380px;white-space:pre-line}
 .toast.ok{border-left:3px solid var(--ok)}

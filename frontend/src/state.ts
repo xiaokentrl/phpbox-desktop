@@ -10,6 +10,30 @@ export interface ContainerRow { name: string; image: string; state: string }
 export interface TaskLine { t: string; c?: '' | 'ok' | 'err' | 'meta' | 'dim' | 'cmd' }
 export interface Task { label: string; cli: string; lines: TaskLine[]; phase: 'running' | 'success' | 'failed' }
 
+// 危险确认弹窗载荷（§8.2 三条件：警告清单 + 勾选 + 输入匹配）
+export interface DangerModal {
+  kind: 'danger'
+  title: string
+  description?: string
+  warnings: { text: string; keep?: boolean }[]
+  checkboxLabel: string
+  inputLabel: string
+  expect: string
+  placeholder?: string
+  cliPreview: string
+  confirmLabel: string
+  purge?: { label: string } // 附加 --purge 勾选（卸载类）
+  onConfirm: (purge: boolean) => void
+}
+// 安装弹窗载荷
+export interface InstallModal {
+  kind: 'install'
+  svc: string
+  title: string
+  suggested: string[]
+  single?: boolean
+}
+
 export const state = reactive({
   route: 'sites' as Route,
   theme: (localStorage.getItem('phpbox-theme') || 'midnight'),
@@ -31,6 +55,7 @@ export const state = reactive({
     { file: 'backup-20260913-0439.tar.gz', size: '1.3 GB', at: '2026-09-13 04:39' },
   ],
   task: null as Task | null,
+  modal: null as InstallModal | DangerModal | null,
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
 })
 
@@ -54,6 +79,15 @@ export function setAppLocale(l: Locale) {
 export function initLocale() {
   document.documentElement.lang = state.locale
 }
+
+/* ─── 弹窗 store：安装 / 危险确认（卸载等破坏性操作 §8.2 三条件）─── */
+export function openInstall(m: Omit<InstallModal, 'kind'>): void {
+  state.modal = { kind: 'install', ...m }
+}
+export function openDanger(m: Omit<DangerModal, 'kind'>): void {
+  state.modal = { kind: 'danger', ...m }
+}
+export function closeModal(): void { state.modal = null }
 
 /* ─── 任务引擎（单队列）：桌面版走真实 spawn，浏览器降级模拟（§13）─── */
 export interface Step { d: number; lines: (string | TaskLine)[] }

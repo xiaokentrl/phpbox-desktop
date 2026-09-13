@@ -1,8 +1,9 @@
 <script setup lang="ts">
 // 应用壳 + 视图路由（阶段 0：内联视图；§22.1 晋升制——复用时抽组件）
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { t, locale, setAppLocale, type Locale } from './i18n'
-import { state, setRoute, setTheme, initTheme, clearTask, taskRunning, toastBus, type Route, type ContainerRow } from './state'
+import { t } from './i18n'
+import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
+  openInstall, openDanger, closeModal, type Route, type ContainerRow } from './state'
 import { dispatchTask } from './api/task'
 import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
@@ -43,6 +44,128 @@ function countFor(id: string): number | null {
   return list ? list.length || null : null
 }
 const svcLabel = (id: string) => t('nav.' + id)
+
+// ── 服务线视图（php/mysql/pgsql/redis/nginx）──
+const SVC_META: Record<string, { icon: string; suggested: string[]; single?: boolean }> = {
+  php:   { icon: '🐘', suggested: ['8.4', '8.3', '8.2', '8.1', '8.0', '7.4'] },
+  mysql: { icon: '🐬', suggested: ['9.1', '8.4', '8.0', '5.7'] },
+  pgsql: { icon: '🐘', suggested: ['17', '16', '15', '14'] },
+  redis: { icon: '⚡', suggested: ['8', '7'] },
+  nginx: { icon: '🌐', suggested: ['alpine', '1.25'], single: true },
+}
+// nginx 版本读 .env（NGINX_VERSION），单实例；其余线多版本
+const PORT_MAP: Record<string, Record<string, string>> = {
+  mysql: { '8.4': '3384', '8.0': '3380', '5.7': '3357', '9.1': '3391' },
+  pgsql: { '17': '5417', '16': '5416', '15': '5415', '14': '5414' },
+  redis: { '8': '6379', '7': '6377' },
+  nginx: { alpine: '80', '1.25': '8025' },
+}
+function svcVersions(kind: string): string[] {
+  return (state.installed as Record<string, string[]>)[kind] ?? []
+}
+function openInstallModal(kind: string) {
+  const meta = SVC_META[kind]
+  openInstall({ svc: kind, title: svcLabel(kind), suggested: meta.suggested, single: meta.single })
+}
+
+// ── 安装弹窗（本地 UI 状态）──
+const installVer = ref('')
+const installModal = computed(() => state.modal?.kind === 'install' ? state.modal : null)
+watch(() => state.modal?.kind, () => { // 打开安装弹窗时重置输入（nginx 单实例预填）
+  const m = installModal.value
+  if (m) installVer.value = m.single ? (SVC_META[m.svc]?.suggested[0] ?? '') : ''
+  if (state.modal?.kind === 'danger') { dcInput.value = ''; dcChecked.value = false; dcPurge.value = false }
+})
+function pickInstallVer(v: string) { installVer.value = v }
+function installCmdPreview(): string {
+  const m = installModal.value
+  if (!m) return ''
+  const v = installVer.value.trim()
+  // nginx install 不带版本（版本由 .env 的 NGINX_VERSION 决定）；其余线 install <版本>
+  return m.svc === 'nginx' ? 'phpbox nginx install' : v ? `phpbox ${m.svc} install ${v}` : `phpbox ${m.svc} install <版本>`
+}
+function confirmInstall() {
+  const m = installModal.value
+  if (!m) return
+  const v = installVer.value.trim()
+  if (m.svc !== 'nginx' && !v) { toastBus(t('mod.err.version'), 'err'); return }
+  const args = m.svc === 'nginx' ? ['nginx', 'install'] : [m.svc, 'install', v]
+  closeModal()
+  dispatchTask(`${t('svc.install')}·${m.title} ${v}`, `phpbox ${args.join(' ')}`, args, {
+    doneMsg: t('task.done'),
+    fallback: [{ d: 400, lines: ['[INFO] 演示环境：安装流程模拟输出'] }],
+    onDone: () => {
+      if (v && !svcVersions(m.svc).includes(v)) ((state.installed as Record<string, string[]>)[m.svc] ??= []).push(v)
+      loadContainers()
+    },
+  })
+}
+
+// ── 危险确认弹窗（卸载：勾选 + 输入匹配 + 可选 --purge）──
+const dcInput = ref(''), dcChecked = ref(false), dcPurge = ref(false)
+const dcModal = computed(() => state.modal?.kind === 'danger' ? state.modal : null)
+const dcMatched = computed(() => dcModal.value ? dcInput.value.trim() === dcModal.value.expect : false)
+const dcReady = computed(() => !!(dcMatched.value && dcChecked.value))
+function dcConfirm() {
+  const m = dcModal.value
+  if (!m || !dcReady.value) return
+  closeModal()
+  m.onConfirm(dcPurge.value)
+}
+
+// 容器名规则（get_container_name）：php84 / mysql84 / redis8 / pg17 / nginx（前缀+去点版本）
+function containerNameFor(kind: string, ver: string): string {
+  if (kind === 'nginx') return 'nginx'
+  if (kind === 'pgsql') return `pg${ver.replace(/\./g, '')}`
+  return `${kind}${ver.replace(/\./g, '')}`
+}
+// 卡片运行状态：真实容器表（Name 是 /php84 形态）
+function containerStateFor(kind: string, ver: string): string {
+  const want = containerNameFor(kind, ver)
+  const c = containers.value.find(x => x.Name.replace(/^\//, '') === want)
+  return c?.State ?? ''
+}
+function copyCmd(cmd: string) {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(cmd).then(() => toastBus(t('toast.copied'), 'ok'), () => toastBus(cmd, 'info', 4000))
+  } else toastBus(cmd, 'info', 4000) // 非 https/localhost 降级为展示
+}
+function openUninstallModal(kind: string, ver: string) {
+  const isNginx = kind === 'nginx'
+  openDanger({
+    title: t('mod.uninstallTitle', { name: svcLabel(kind), ver }),
+    description: t('mod.uninstallDesc'),
+    warnings: isNginx ? [
+      { text: t('mod.warn.uninstallCmd') },
+      { text: t('mod.warn.configKeep'), keep: true },
+    ] : [
+      { text: t('mod.warn.container', { kind, ver }) },
+      { text: t('mod.warn.config', { kind, ver }) },
+      { text: t('mod.warn.dataKeep'), keep: true },
+      { text: t('mod.warn.offlineKeep'), keep: true },
+    ],
+    checkboxLabel: isNginx ? t('mod.uninstallNginxCheck') : t('mod.uninstallCheck', { kind, ver }),
+    inputLabel: t('mod.confirmInput'),
+    expect: ver,
+    placeholder: t('mod.confirmPlaceholder', { ver }),
+    cliPreview: isNginx ? 'phpbox nginx uninstall' : `phpbox ${kind} uninstall ${ver}`,
+    confirmLabel: t('mod.confirmUninstall'),
+    purge: isNginx ? undefined : { label: t('mod.purge') },
+    onConfirm: (purge) => {
+      const args = isNginx ? ['nginx', 'uninstall'] : [kind, 'uninstall', ver, ...(purge ? ['--purge'] : [])]
+      const label = `${t('mod.confirmUninstall')}·${svcLabel(kind)} ${ver}`
+      dispatchTask(label, `phpbox ${args.join(' ')}`, args, {
+        doneMsg: t('task.done'),
+        fallback: [{ d: 400, lines: ['[INFO] 演示环境：卸载流程模拟输出'] }],
+        onDone: () => {
+          const list = (state.installed as Record<string, string[]>)[kind]
+          if (list) { const i = list.indexOf(ver); if (i >= 0) list.splice(i, 1) }
+          loadContainers()
+        },
+      })
+    },
+  })
+}
 
 // ── Toast ──
 const toasts = ref<{ id: number; msg: string; kind: string }[]>([])
@@ -131,7 +254,7 @@ function onSiteSwitch(e: Event, domain: string) {
       </nav>
       <div class="sidebar-foot">
         <button class="btn-ghost" @click="refreshContainers"><span>↻ {{ t('btn.refresh') }}</span></button>
-        <button class="btn-ghost" @click="setAppLocale(locale === 'zh-CN' ? 'en-US' : 'zh-CN')">
+        <button class="btn-ghost" @click="setAppLocale(state.locale === 'zh-CN' ? 'en-US' : 'zh-CN')">
           <span>{{ state.locale === 'zh-CN' ? '🌐 English' : '🌐 中文' }}</span>
         </button>
         <button class="btn-ghost" @click.stop="themePop = !themePop">
@@ -195,10 +318,37 @@ function onSiteSwitch(e: Event, domain: string) {
               </tr></tbody></table></div>
           </template>
 
-          <!-- ═══ 服务线（通用卡片视图）═══ -->
+          <!-- ═══ 服务线（版本卡片 + 安装/卸载真实链路）═══ -->
           <template v-else-if="['php','mysql','pgsql','redis','nginx'].includes(state.route)">
-            <header class="view-header"><div><h1>{{ svcLabel(state.route) }}</h1><p class="view-sub">{{ t('svc.'+state.route+'.sub') }}</p></div></header>
-            <div class="empty"><div class="empty-icon">📦</div><h2>{{ svcLabel(state.route) }}</h2><p>Service management view — full port next slice.</p></div>
+            <header class="view-header"><div><h1>{{ svcLabel(state.route) }}</h1><p class="view-sub">{{ t('svc.'+state.route+'.sub') }}</p></div>
+              <div class="header-actions">
+                <button class="btn btn-primary" :disabled="taskRunning()" @click="openInstallModal(state.route)">+ {{ t('svc.install') }} {{ svcLabel(state.route) }}</button>
+              </div></header>
+            <div v-if="svcVersions(state.route).length === 0" class="empty">
+              <div class="empty-icon">{{ SVC_META[state.route]?.icon }}</div>
+              <h2>{{ t('svc.empty.title', { name: svcLabel(state.route) }) }}</h2>
+              <p>{{ t('svc.hint.'+state.route) }}</p>
+              <button class="btn btn-primary" @click="openInstallModal(state.route)">{{ t('svc.install') }} {{ svcLabel(state.route) }}</button>
+            </div>
+            <div v-else class="grid grid-3">
+              <article v-for="v in svcVersions(state.route)" :key="v" class="card version-card">
+                <div class="version-card-head">
+                  <span class="version-tag">{{ v }}</span>
+                  <span class="status-pill" :class="containerStateFor(state.route, v) === 'running' ? 'pill-ok' : 'pill-off'">
+                    <span class="pill-dot"></span>{{ containerStateFor(state.route, v) === 'running' ? t('svc.card.running') : t('health.down') }}
+                  </span>
+                </div>
+                <div>
+                  <div v-if="PORT_MAP[state.route]?.[v]" class="kv"><span class="k">{{ t('svc.card.port') }}</span><span class="v">{{ PORT_MAP[state.route][v] }}</span></div>
+                  <div v-if="['mysql','pgsql'].includes(state.route)" class="kv"><span class="k">{{ t('svc.card.password') }}</span><span class="v">••••••••</span></div>
+                  <div class="kv"><span class="k">{{ t('svc.card.config') }}</span><span class="v">{{ t('svc.card.configPath', { kind: state.route, ver: v }) }}</span></div>
+                </div>
+                <div class="version-card-foot">
+                  <button class="btn btn-sm" @click="copyCmd(`phpbox ${state.route} list`)">{{ t('svc.card.cmd') }}</button>
+                  <button class="btn btn-sm btn-danger" @click="openUninstallModal(state.route, v)">{{ t('btn.uninstall') }}</button>
+                </div>
+              </article>
+            </div>
           </template>
 
           <!-- ═══ Go / 备份 / 离线 / 设置（占位）═══ -->
@@ -252,6 +402,58 @@ function onSiteSwitch(e: Event, domain: string) {
         <div class="drawer-log" ref="drawerLogEl"><div v-for="(l, i) in state.task.lines" :key="i" class="log-line" :class="l.c">{{ l.t }}</div></div>
       </section>
     </main>
+    <!-- 弹窗根：安装 / 危险确认（§8.2 三条件）-->
+    <div class="modal-root" :class="{ open: !!state.modal }">
+      <div v-if="installModal" class="modal">
+        <div class="modal-head"><h3>{{ t('svc.install') }} {{ installModal.title }}</h3><p>{{ t('mod.installDesc') }}</p></div>
+        <div class="modal-body">
+          <div class="field">
+            <label>{{ t('mod.version') }}</label>
+            <input type="text" v-model="installVer" :placeholder="SVC_META[installModal.svc]?.suggested[0] || ''" :disabled="installModal.single" autocomplete="off">
+            <div class="quick-picks">
+              <button v-for="v in installModal.suggested" :key="v" class="pick" :class="{ selected: installVer === v }" @click="pickInstallVer(v)">{{ v }}</button>
+            </div>
+          </div>
+          <div class="field"><label>{{ t('mod.willRun') }}</label>
+            <div class="cmd-preview"><span class="prompt">$ </span>{{ installCmdPreview() }}</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" @click="closeModal()">{{ t('mod.cancel') }}</button>
+          <button class="btn btn-primary" @click="confirmInstall()">{{ t('mod.install') }}</button>
+        </div>
+      </div>
+      <div v-else-if="dcModal" class="modal">
+        <div class="danger-header">
+          <div class="danger-icon">⚠</div>
+          <div style="flex:1"><h3>{{ dcModal.title }}</h3><p v-if="dcModal.description">{{ dcModal.description }}</p></div>
+        </div>
+        <div class="modal-body">
+          <ul class="danger-list">
+            <li v-for="(w, i) in dcModal.warnings" :key="i" :class="{ keep: w.keep }">{{ w.text }}</li>
+          </ul>
+          <div class="danger-input-wrap">
+            <label>{{ dcModal.inputLabel }} <span class="key">{{ dcModal.expect }}</span></label>
+            <input type="text" v-model="dcInput" :placeholder="dcModal.placeholder" :class="{ match: dcMatched }" autocomplete="off" spellcheck="false">
+          </div>
+          <label class="danger-check" :class="{ checked: dcChecked }">
+            <input type="checkbox" v-model="dcChecked">
+            <span class="check-label">{{ dcModal.checkboxLabel }}</span>
+          </label>
+          <label v-if="dcModal.purge" class="danger-check" :class="{ checked: dcPurge }">
+            <input type="checkbox" v-model="dcPurge">
+            <span class="check-label">{{ dcModal.purge.label }}<strong style="color:var(--danger)">{{ t('mod.purgeIrreversible') }}</strong></span>
+          </label>
+          <div class="field"><label>{{ t('mod.willRun') }}</label>
+            <div class="cmd-preview"><span class="prompt">$ </span>{{ dcModal.cliPreview }}</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" @click="closeModal()">{{ t('mod.cancel') }}</button>
+          <button class="btn btn-danger-solid" :disabled="!dcReady" @click="dcConfirm()">{{ dcModal.confirmLabel }}</button>
+        </div>
+      </div>
+    </div>
     <div class="toast-root">
       <div v-for="x in toasts" :key="x.id" class="toast" :class="x.kind">{{ x.msg }}</div>
     </div>

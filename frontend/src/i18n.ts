@@ -23,6 +23,28 @@ const ZH: Dict = {
   'task.close': '关闭', 'task.busy': '已有任务进行中，请稍候',
   'task.done': '任务完成', 'task.doneOf': '任务完成',
   'task.diag.label': '环境诊断', 'task.diag.done': '诊断完成',
+  'svc.hint.php': '安装一个 PHP 版本，就能开始创建站点。', 'svc.hint.mysql': '安装 MySQL，为你的应用准备数据库。',
+  'svc.hint.pgsql': '安装 PostgreSQL，支持 pgvector 等扩展。', 'svc.hint.redis': '安装 Redis，为应用提供缓存与会话存储。',
+  'svc.hint.nginx': '安装 Nginx，站点才能通过域名访问。',
+  'svc.empty.title': '还没有安装 {name}', 'svc.installed': '已安装',
+  'svc.card.port': '端口', 'svc.card.exts': '扩展', 'svc.card.extsCount': '{n} 个', 'svc.card.password': '密码',
+  'svc.card.config': '配置', 'svc.card.configPath': 'config/{kind}/{ver}/',
+  'svc.card.running': '运行中', 'svc.card.cmd': '命令',
+  'mod.install': '安装', 'mod.cancel': '取消', 'mod.version': '版本', 'mod.willRun': '将执行',
+  'mod.err.version': '请输入或选择版本',
+  'mod.installDesc': '选择版本，将自动生成配置并启动容器',
+  'mod.uninstallTitle': '卸载 {name} {ver}', 'mod.uninstallDesc': '会停止并移除该版本的服务容器与配置。',
+  'mod.warn.container': '移除容器 phpbox-{kind}-{ver}',
+  'mod.warn.config': '移除 config/{kind}/{ver}/',
+  'mod.warn.dataKeep': '数据目录默认保留', 'mod.warn.offlineKeep': '离线缓存默认保留',
+  'mod.warn.sourceKeep': '站点源码不会被删除',
+  'mod.uninstallCheck': '我了解卸载后需重新执行 phpbox {kind} install {ver} 才能恢复服务',
+  'mod.confirmInput': '请输入版本号以确认：', 'mod.confirmPlaceholder': '输入 {ver}',
+  'mod.confirmUninstall': '确认卸载',
+  'mod.purge': '同时删除数据目录（--purge）——', 'mod.purgeIrreversible': '数据不可恢复',
+  'mod.warn.uninstallCmd': '卸载将停止并移除 Nginx 容器',
+  'mod.warn.configKeep': '站点配置保留于 config/nginx/',
+  'mod.uninstallNginxCheck': '我了解卸载后需重新执行 phpbox nginx install 才能恢复服务',
   'service.port': '端口', 'service.password': '密码', 'service.config': '配置', 'service.container': '容器',
   'service.running': '运行中', 'service.exts': '扩展',
   'btn.exts': '扩展', 'btn.uninstall': '卸载', 'btn.reveal': '显示密码', 'btn.copyDsn': '复制连接',
@@ -57,6 +79,28 @@ const EN: Dict = {
   'task.close': 'Close', 'task.busy': 'A task is already running, please wait',
   'task.done': 'Task complete', 'task.doneOf': 'Task complete',
   'task.diag.label': 'Diagnostics', 'task.diag.done': 'Diagnostics complete',
+  'svc.hint.php': 'Install a PHP version to start creating sites.', 'svc.hint.mysql': 'Install MySQL for your applications.',
+  'svc.hint.pgsql': 'Install PostgreSQL, with pgvector and more.', 'svc.hint.redis': 'Install Redis for caching and sessions.',
+  'svc.hint.nginx': 'Install Nginx so sites are reachable by domain.',
+  'svc.empty.title': '{name} not installed yet', 'svc.installed': 'Installed',
+  'svc.card.port': 'Port', 'svc.card.exts': 'Extensions', 'svc.card.extsCount': '{n}', 'svc.card.password': 'Password',
+  'svc.card.config': 'Config', 'svc.card.configPath': 'config/{kind}/{ver}/',
+  'svc.card.running': 'Running', 'svc.card.cmd': 'Command',
+  'mod.install': 'Install', 'mod.cancel': 'Cancel', 'mod.version': 'Version', 'mod.willRun': 'Will run',
+  'mod.err.version': 'Enter or pick a version',
+  'mod.installDesc': 'Pick a version; config is generated and the container started automatically',
+  'mod.uninstallTitle': 'Uninstall {name} {ver}', 'mod.uninstallDesc': 'Stops and removes the service container and its config.',
+  'mod.warn.container': 'Removes container phpbox-{kind}-{ver}',
+  'mod.warn.config': 'Removes config/{kind}/{ver}/',
+  'mod.warn.dataKeep': 'Data directory is kept by default', 'mod.warn.offlineKeep': 'Offline cache is kept by default',
+  'mod.warn.sourceKeep': 'Site source code is NOT deleted',
+  'mod.uninstallCheck': 'I understand reinstalling requires phpbox {kind} install {ver}',
+  'mod.confirmInput': 'Type the version to confirm:', 'mod.confirmPlaceholder': 'Type {ver}',
+  'mod.confirmUninstall': 'Uninstall',
+  'mod.purge': 'Also delete the data directory (--purge) — ', 'mod.purgeIrreversible': 'irreversible',
+  'mod.warn.uninstallCmd': 'Stops and removes the Nginx container',
+  'mod.warn.configKeep': 'Site configs are kept in config/nginx/',
+  'mod.uninstallNginxCheck': 'I understand reinstalling requires phpbox nginx install',
   'service.port': 'Port', 'service.password': 'Password', 'service.config': 'Config', 'service.container': 'Container',
   'service.running': 'Running', 'service.exts': 'Extensions',
   'btn.exts': 'Extensions', 'btn.uninstall': 'Uninstall', 'btn.reveal': 'Reveal password', 'btn.copyDsn': 'Copy DSN',
@@ -86,8 +130,10 @@ function detect(): Locale {
 import { ref } from 'vue'
 export const locale = ref(detect() as Locale)
 
-export function t(key: string): string {
-  return DICTS[locale.value][key] ?? ZH[key] ?? key
+export function t(key: string, vars?: Record<string, string | number>): string {
+  let s = DICTS[locale.value][key] ?? ZH[key] ?? key
+  if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v))
+  return s
 }
 
 export function setAppLocale(l: Locale) { setLocale(l) }
