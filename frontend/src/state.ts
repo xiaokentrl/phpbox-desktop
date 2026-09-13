@@ -1,6 +1,7 @@
 // 应用状态（阶段 0：reactive 单例；store 数量增长后迁 Pinia——规约 §一 迁移成本注释）
 import { reactive } from 'vue'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
+import type { ResourceUsage as ResourceUsageModel } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/models'
 import { setLocale, t, type Locale } from './i18n'
 
 export type Route = 'sites' | 'php' | 'mysql' | 'pgsql' | 'redis' | 'nginx' | 'go'
@@ -98,6 +99,9 @@ export const state = reactive({
   dockerErr: '', backupErr: '', offlineErr: '', siteErr: '', envErr: '',
   // 引擎就绪度（presence.Detect）：null = 未探测（浏览器降级）；字段见绑定 PresenceStatus
   presence: null as null | { EngineDir: boolean; CliInPath: string; HasEnv: boolean; DockerOK: boolean; DockerErr: string },
+  // 资源占用（Stats.GetResourceUsage，§3.11）：null = 未加载（浏览器降级不显示，不伪造）
+  // 直接采用生成绑定类型（engine 类型无 json tag，字段名/可空性与生成器对齐）
+  resourceUsage: null as null | ResourceUsageModel,
   // .env 编辑区（settings 模块）
   envRows: [] as EnvRow[],
   envDraft: {} as Record<string, string>,

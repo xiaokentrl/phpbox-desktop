@@ -34,6 +34,15 @@ export type BackupEntry = backup$0.Entry;
 export type ContainerSummary = docker$0.ContainerSummary;
 
 /**
+ * DirUsage 一个目录的占用（路径 + 真实字节；目录不存在为 0）。
+ */
+export interface DirUsage {
+    "label": string;
+    "path": string;
+    "bytes": number;
+}
+
+/**
  * EnvKV 一个 .env 条目（Editable=是否允许 GUI 修改）。
  */
 export interface EnvKV {
@@ -61,6 +70,19 @@ export type OfflineResult = offline$0.Result;
  * PresenceStatus 透传引擎类型。
  */
 export type PresenceStatus = presence$0.Status;
+
+/**
+ * ResourceUsage 总览资源小部件数据：镜像（Docker API）+ 各数据目录（.env 契约路径）。
+ */
+export interface ResourceUsage {
+    "images": docker$0.ImageUsage;
+    "dirs": DirUsage[] | null;
+
+    /**
+     * 单目录测量失败不影响整体（快照尽力而为）
+     */
+    "dirsErrs": string[] | null;
+}
 
 /**
  * SiteEntry 透传引擎类型。

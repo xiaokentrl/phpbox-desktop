@@ -9,6 +9,7 @@ import { ListSites, ProbeSiteHealth } from '../../bindings/github.com/xiaokentrl
 import { ListGoProjects } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { ReadEnv } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 import { Detect as DetectPresence } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/presence'
+import { GetResourceUsage } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/stats'
 
 // 引擎就绪度（§5.1 首启检测）：三条件独立呈现，不合并布尔——开发者要分别知道缺什么。
 // 浏览器降级保留 null（横幅不显示，不做假检测）。
@@ -17,6 +18,14 @@ export async function loadPresence() {
   try {
     state.presence = await DetectPresence() ?? null
   } catch { state.presence = null }
+}
+
+// 资源占用（§3.11 小部件）：镜像（Docker API）+ 数据目录（递归 stat）真实测量
+export async function loadResourceUsage() {
+  if (!inWails()) return
+  try {
+    state.resourceUsage = await GetResourceUsage() ?? null
+  } catch { state.resourceUsage = null }
 }
 
 // 容器列表（总览/服务线/Go 状态共用的真实数据源）+ installed 派生

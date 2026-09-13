@@ -11,6 +11,7 @@ import * as Php from "./php.js";
 import * as Presence from "./presence.js";
 import * as Runner from "./runner.js";
 import * as Site from "./site.js";
+import * as Stats from "./stats.js";
 export {
     Backup,
     Diag,
@@ -21,17 +22,20 @@ export {
     Php,
     Presence,
     Runner,
-    Site
+    Site,
+    Stats
 };
 
 export type {
     BackupEntry,
     ContainerSummary,
+    DirUsage,
     EnvKV,
     GoProjectEntry,
     OfflineEntry,
     OfflineResult,
     PresenceStatus,
+    ResourceUsage,
     SiteEntry,
     SiteHealth
 } from "./models.js";

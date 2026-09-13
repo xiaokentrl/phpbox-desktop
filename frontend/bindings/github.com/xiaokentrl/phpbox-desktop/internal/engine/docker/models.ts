@@ -26,3 +26,44 @@ export interface ContainerSummary {
      */
     "Version": string;
 }
+
+/**
+ * ImageStat 一条镜像的占用摘要（phpbox 管理视角过滤可选）。
+ */
+export interface ImageStat {
+    /**
+     * 短 ID（12 位）
+     */
+    "ID": string;
+
+    /**
+     * 仓库标签（顶层多个 repo:tag）
+     */
+    "Tags": string[] | null;
+
+    /**
+     * 字节（docker image ls SIZE）
+     */
+    "Size": number;
+
+    /**
+     * 是否被任何容器使用（docker system df ACTIVE 语义）
+     */
+    "InUse": boolean;
+}
+
+/**
+ * ImageUsage 镜像占用汇总：总量 + 明细（按大小降序）。
+ */
+export interface ImageUsage {
+    /**
+     * 全部镜像字节和
+     */
+    "Total": number;
+
+    /**
+     * 正被容器使用的镜像字节和
+     */
+    "Used": number;
+    "Items": ImageStat[] | null;
+}

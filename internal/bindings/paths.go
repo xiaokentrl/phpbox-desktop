@@ -22,6 +22,10 @@ func baseDir() string {
 	return filepath.Join(home, "phpbox")
 }
 
+// homeDirOf / joinPath stats 等绑定域的轻量路径辅助（与 baseDir 同源的 HOME 语义）。
+func homeDirOf() (string, error) { return os.UserHomeDir() }
+func joinPath(parts ...string) string { return filepath.Join(parts...) }
+
 // envLookup 读 .env 单键（缺失返回空）。
 func envLookup(key string) string {
 	kvs, err := engineEnv.Read(filepath.Join(baseDir(), ".env"))

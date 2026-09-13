@@ -314,3 +314,18 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .donut-legend{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px;min-width:200px}
 .donut-legend li{display:grid;grid-template-columns:12px 1fr auto auto;gap:9px;align-items:center;font-size:12.5px;color:var(--text)}
 .legend-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+
+/* ─── 总览资源小部件（§3.11：镜像 + 数据目录真实占用）─── */
+.resource-card{display:flex;gap:22px;align-items:stretch;padding:16px 18px;margin-top:14px;flex-wrap:wrap}
+.res-block{min-width:160px}
+.res-block-wide{flex:1;min-width:280px}
+.res-block h4{margin:0 0 8px;font-size:12px;color:var(--text-mute);text-transform:uppercase;letter-spacing:.06em}
+.res-big{font-size:21px;font-weight:700;color:var(--text)}
+.res-sub{font-size:11.5px;color:var(--text-mute);margin-top:4px}
+.res-divider{width:1px;background:var(--border-2);flex-shrink:0}
+.res-dirs{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.res-dirs li{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;font-size:12.5px}
+.res-dir-label{color:var(--text-dim)}
+.res-dir-path{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.res-dir-size{font-size:12.5px;color:var(--text)}
+.res-dir-size.dim{color:var(--text-mute)}

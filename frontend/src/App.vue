@@ -6,7 +6,7 @@ import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunn
   openInstall, openDanger, openExt, openSiteModal, closeModal, pushNotif, notifUnread, markNotifsRead, clearNotifs,
   type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
-import { loadPresence, loadContainers } from './api/data'
+import { loadPresence, loadContainers, loadResourceUsage } from './api/data'
 import { Events } from '@wailsio/runtime'
 import { ListContainers, GetContainerLogs } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
@@ -312,6 +312,7 @@ watch(() => state.route, (r) => {
   if (r === 'sites') loadSites()
   if (r === 'go') loadGoProjects()
   if (r === 'diag') { loadContainers(); loadPresence() } // 诊断页进入即刷新信号（存在性 + 容器状态）
+  if (r === 'overview') loadResourceUsage() // 资源小部件（目录递归 stat 是实时快照，不缓存）
   if (r === 'settings') loadEnv()
 })
 
@@ -999,6 +1000,27 @@ function initTrayNav() {
               <div class="summary-item"><div class="summary-num">{{ state.containers.length }}</div><div class="summary-label">Containers</div></div>
               <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.containers.filter(c=>c.State==='running').length }}</div><div class="summary-label">Running</div></div>
             </div>
+
+            <!-- 资源占用小部件（§3.11：镜像 Docker API + 数据目录递归 stat，真实测量） -->
+            <div v-if="state.resourceUsage" class="card resource-card">
+              <div class="res-block">
+                <h4>{{ t('res.images') }}</h4>
+                <div class="res-big">{{ fmtSize(state.resourceUsage.images.Total) }}</div>
+                <div class="res-sub">{{ t('res.imagesUsed', { used: fmtSize(state.resourceUsage.images.Used), n: (state.resourceUsage.images.Items ?? []).length }) }}</div>
+              </div>
+              <div class="res-divider"></div>
+              <div class="res-block res-block-wide">
+                <h4>{{ t('res.dirs') }}</h4>
+                <ul class="res-dirs">
+                  <li v-for="d in state.resourceUsage.dirs ?? []" :key="d.label">
+                    <span class="res-dir-label">{{ t('res.dir.' + d.label) }}</span>
+                    <span class="mono dim res-dir-path">{{ d.path }}</span>
+                    <span class="mono res-dir-size" :class="{ dim: d.bytes === 0 }">{{ fmtSize(d.bytes) }}</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
             <div v-if="!showWelcome" class="table-wrap"><table>
               <thead><tr><th>Container</th><th>Image</th><th>State</th></tr></thead>
               <tbody><tr v-for="c in state.containers" :key="c.Name">
