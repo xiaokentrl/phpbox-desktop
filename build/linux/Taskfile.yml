@@ -171,6 +171,10 @@ tasks:
     cmds:
       - mkdir -p {{.ROOT_DIR}}/build/linux/appimage
       - wails3 generate .desktop -name "{{.APP_NAME}}" -exec "{{.EXEC}}" -icon "{{.ICON}}" -outputfile "{{.ROOT_DIR}}/build/linux/{{.APP_NAME}}.desktop" -categories "{{.CATEGORIES}}"
+      # StartupWMClass 必须等于二进制名：实测 WM_WINDOW_CLASS 由可执行文件 basename 决定
+      # （/tmp/phpbox-desktop-prod → WM_CLASS="phpbox-desktop-prod"），无此项时 GNOME 无法把
+      # 窗口归并到启动器图标。wails3 generate 无 wmclass 参数，故生成后行级追加（幂等）。
+      - grep -q '^StartupWMClass=' {{.OUTPUTFILE}} || echo 'StartupWMClass={{.APP_NAME}}' >> {{.OUTPUTFILE}}
     vars:
       APP_NAME: '{{.APP_NAME}}'
       EXEC: '{{.APP_NAME}}'
