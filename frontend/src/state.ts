@@ -1,5 +1,6 @@
 // 应用状态（阶段 0：reactive 单例；store 数量增长后迁 Pinia——规约 §一 迁移成本注释）
 import { reactive } from 'vue'
+import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 import { setLocale, t, type Locale } from './i18n'
 
 export type Route = 'sites' | 'php' | 'mysql' | 'pgsql' | 'redis' | 'nginx' | 'go'
@@ -7,6 +8,7 @@ export type Route = 'sites' | 'php' | 'mysql' | 'pgsql' | 'redis' | 'nginx' | 'g
 
 // 站点行（与 Go SiteEntry 对齐：php 为服务键如 php84）
 export interface SiteEntry { domain: string; php: string; root: string; hosts: boolean }
+// @deprecated 壳化重构过渡：改用绑定的 ContainerSummary
 export interface ContainerRow { name: string; image: string; state: string }
 export interface TaskLine { t: string; c?: '' | 'ok' | 'err' | 'meta' | 'dim' | 'cmd' }
 export interface Task { label: string; cli: string; lines: TaskLine[]; phase: 'running' | 'success' | 'failed' }
@@ -40,6 +42,8 @@ export interface BackupRow { file: string; path: string; size: number; at: strin
 export interface OfflineRow { svc: string; ver: string; path: string; size: number; files: number; kind: string }
 // Go 项目行（与 Go GoProjectEntry 对齐）
 export interface GoProjectRow { name: string; dir: string; running: boolean }
+// .env 行（与 Go EnvKV 对齐；draft 为编辑副本）
+export interface EnvRow { key: string; value: string; editable: boolean }
 // 长驻进程（daemon）状态：go run / go logs 等永不返回命令的独立通道
 export interface DaemonState { id: string; label: string; cli: string; lines: TaskLine[]; running: boolean; failed: boolean }
 // PHP 扩展弹窗载荷（真实状态经 Php.ReadPhpExtensions 加载）
@@ -63,7 +67,7 @@ export const state = reactive({
   } as Record<string, string>,
   // 真实数据：经 Site 绑定解析 config/nginx/sites/*.vhost 加载
   sites: [] as SiteEntry[],
-  containers: [] as ContainerRow[],
+  containers: [] as ContainerSummary[], // 真实 Docker API（总览/服务线/Go 共用）
   installed: { php:['8.4','8.2','8.0','7.4'], mysql:['8.4','8.0','5.7'], pgsql:['17'], redis:['8'], nginx:['alpine'] } as Record<string, string[]>,
   // 真实数据：经 Backup 绑定扫描 ~/phpbox/backups/ 加载
   backups: [] as BackupRow[],
@@ -73,6 +77,13 @@ export const state = reactive({
   goProjects: [] as GoProjectRow[],
   // 长驻进程通道（Runner.StartDaemon/StopDaemon）：单槽，与任务队列独立
   daemon: null as DaemonState | null,
+  // 各数据域的加载错误（视图切换不丢失）
+  dockerErr: '', backupErr: '', offlineErr: '', siteErr: '', envErr: '',
+  // .env 编辑区（settings 模块）
+  envRows: [] as EnvRow[],
+  envDraft: {} as Record<string, string>,
+  // 离线缓存逐条校验状态（key: svc/ver）
+  offlineVerifyState: {} as Record<string, string>,
   task: null as Task | null,
   modal: null as InstallModal | DangerModal | ExtModal | SiteModal | null,
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
