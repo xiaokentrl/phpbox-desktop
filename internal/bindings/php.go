@@ -20,11 +20,7 @@ func (p *Php) ReadPhpExtensions(version string) ([]string, error) {
 	if version == "" || filepath.Base(version) != version {
 		return nil, fmt.Errorf("非法 PHP 版本号: %q", version)
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	path := filepath.Join(home, "phpbox", "config", "php", version, "extensions.env")
+	path := filepath.Join(phpConfigDir(version), "extensions.env")
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return nil, fmt.Errorf("版本未安装或无扩展状态: config/php/%s/extensions.env", version)

@@ -28,7 +28,7 @@ main.go/tray.go（窗口、托盘、资产、服务注册）
 数据方向：读取 = Go 引擎直读文件与 Docker API；变更 = Runner spawn CLI（RunTask 单任务队列 + daemon 长驻槽）
 ```
 
-- 路径常量阶段 0 硬编码（`~/phpbox/*`、`~/www`）；`engine/env` 已能解析 `.env`，绑定层路径统一读取是 v0.1 待办。
+- 路径经 `bindings/paths.go` 统一派生：`BASE_DIR` 硬编码 `~/phpbox`（install.sh 固定布局，.env 无此键）；`OFFLINE_DIR`/`GO_PROJECTS_ROOT`/`NGINX_PORT` 等从 `.env` 读取，路径键按 bash `env.sh` 归一化规则展开（`~` 展开HOME、`./` 相对 BASE_DIR、裸名拼 BASE_DIR、绝对路径原样）。
 - spawn 的 CLI 签名、文件格式、容器命名规则**必须先在 bash 仓核实**再实现，禁止凭原型想象。
 
 ## 4. 工程执行流程
@@ -64,4 +64,4 @@ main.go/tray.go（窗口、托盘、资产、服务注册）
 
 **已接真实数据**：站点（vhost/hosts/切换/删除/**健康探活**——Go 侧 HEAD 127.0.0.1:NGINX_PORT + Host 头路由免 DNS，三态 up/degraded/down，实测 demo.test→403 degraded 为真实结果）、五服务线（安装/卸载/扩展，installed 由容器 phpbox-service/version labels 派生与 cmd_list 同源）、备份（列表/创建/恢复/删除）、离线缓存（扫描/校验/清理）、Go 项目（发现/测试/停止/daemon 运行）、设置（.env 白名单读写）、托盘（32×32 图标 + 关 X 隐藏）、任务抽屉 + daemon 通道。
 
-**v0.1 待办**：命令面板（⌘K）、Windows 构建验证、Dock/desktop file 安装（`build/linux/phpbox-desktop.desktop` 已生成未安装到 `~/.local/share/applications/`，窗口 WM_CLASS 匹配待验证）、README、绑定层路径统一读 .env。
+**v0.1 待办**：Windows 构建验证、Dock/desktop file 安装（`build/linux/phpbox-desktop.desktop` 已生成未安装到 `~/.local/share/applications/`，窗口 WM_CLASS 匹配待验证）、README。已完成的 v0.1 项：站点健康探活（ec894e0）、命令面板 ⌘K（a50ffae）、绑定层路径统一读 .env。

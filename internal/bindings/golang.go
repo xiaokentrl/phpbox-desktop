@@ -5,8 +5,6 @@ package bindings
 import (
 	"context"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/xiaokentrl/phpbox-desktop/internal/engine/docker"
@@ -18,16 +16,6 @@ type GoProjects struct{}
 
 // GoProjectEntry 透传引擎类型。
 type GoProjectEntry = goproject.Entry
-
-// goProjectsRoot phpbox 的 Go 项目根（.env GO_PROJECTS_ROOT 默认 ~/www）。
-// 暂不读用户 .env 覆盖——阶段 0 固定默认，v0.1 引入 .env 解析后统一。
-func goProjectsRoot() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "www"
-	}
-	return filepath.Join(home, "www")
-}
 
 // ListGoProjects 列出自动发现的 Go 项目及运行状态。
 func (g *GoProjects) ListGoProjects(ctx context.Context) ([]GoProjectEntry, error) {

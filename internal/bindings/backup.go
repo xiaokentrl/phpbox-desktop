@@ -17,19 +17,9 @@ type Backup struct{}
 // BackupEntry 透传引擎类型。
 type BackupEntry = backup.Entry
 
-// backupDir phpbox 的备份目录（env.sh 默认：BASE_DIR/backups；BASE_DIR=$HOME/phpbox）。
-// 暂不读用户 .env 覆盖——阶段 0 固定默认，v0.1 引入 .env 解析后统一。
-func backupDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "backups"
-	}
-	return filepath.Join(home, "phpbox", "backups")
-}
-
 // ListBackups 列出全部备份归档（新在前）。
 func (b *Backup) ListBackups() ([]BackupEntry, error) {
-	entries, err := backup.List(backupDir())
+	entries, err := backup.List(backupsDir())
 	if err != nil {
 		log.Printf("[绑定] Backup.ListBackups 失败: %v", err)
 		return nil, err
@@ -45,7 +35,7 @@ func (b *Backup) DeleteBackup(name string) error {
 		log.Printf("[绑定] Backup.DeleteBackup 拒绝: %v", err)
 		return err
 	}
-	path := filepath.Join(backupDir(), name)
+	path := filepath.Join(backupsDir(), name)
 	if err := os.Remove(path); err != nil {
 		log.Printf("[绑定] Backup.DeleteBackup(%s) 失败: %v", name, err)
 		return err

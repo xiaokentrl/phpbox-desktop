@@ -7,7 +7,7 @@ import (
 
 // 集成测试：真实扫描 ~/phpbox/backups/。目录不存在（未安装 bash 引擎）时 SKIPPED。
 func TestListBackupsThroughBinding(t *testing.T) {
-	dir := backupDir()
+	dir := backupsDir()
 	entries, err := (&Backup{}).ListBackups()
 	if err != nil {
 		t.Skipf("backups 目录不可读（%v）：SKIPPED", err)

@@ -6,8 +6,6 @@ package bindings
 import (
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 
 	engineEnv "github.com/xiaokentrl/phpbox-desktop/internal/engine/env"
 )
@@ -30,15 +28,6 @@ var envEditable = map[string]bool{
 	"NGINX_PORT": true, "NGINX_VERSION": true, "PHP_DEFAULT_EXTENSIONS": true,
 	"GO_PROJECTS_ROOT": true, "GO_DEFAULT_VERSION": true, "GO_DEFAULT_PORT": true,
 	"GO_PROXY": true, "GO_CACHE_ROOT": true, "GO_CGO_ENABLED": true,
-}
-
-// envFile phpbox 的 .env 路径（env.sh：ENV_FILE=$BASE_DIR/.env）。
-func envFile() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ".env"
-	}
-	return filepath.Join(home, "phpbox", ".env")
 }
 
 // ReadEnv 返回全部 .env 条目（含可编辑标记）。
