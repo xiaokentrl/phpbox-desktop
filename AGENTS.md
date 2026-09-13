@@ -64,4 +64,4 @@ main.go/tray.go（窗口、托盘、资产、服务注册）
 
 **已接真实数据**：站点（vhost/hosts/切换/删除/**健康探活**——Go 侧 HEAD 127.0.0.1:NGINX_PORT + Host 头路由免 DNS，三态 up/degraded/down，实测 demo.test→403 degraded 为真实结果）、五服务线（安装/卸载/扩展，installed 由容器 phpbox-service/version labels 派生与 cmd_list 同源）、备份（列表/创建/恢复/删除）、离线缓存（扫描/校验/清理）、Go 项目（发现/测试/停止/daemon 运行）、设置（.env 白名单读写）、托盘（32×32 图标 + 关 X 隐藏）、任务抽屉 + daemon 通道。
 
-**v0.1 待办**：Windows 构建验证、README。已完成的 v0.1 项：站点健康探活（ec894e0）、命令面板 ⌘K（a50ffae）、绑定层路径统一读 .env（b62f0c7）、Dock/desktop file 安装（用户级 `build/linux/install-user.sh`：`~/.local/bin` + hicolor 图标 + `~/.local/share/applications`；desktop file 含 `StartupWMClass=phpbox-desktop`，生成任务行级追加该键，实测 WM_CLASS=二进制 basename 精确匹配）。
+**v0.1 待办**：Windows 构建验证。已完成的 v0.1 项：站点健康探活（ec894e0）、命令面板 ⌘K（a50ffae）、绑定层路径统一读 .env（b62f0c7）、Dock/desktop file 安装（用户级 `build/linux/install-user.sh`：`~/.local/bin` + hicolor 图标 + `~/.local/share/applications`；desktop file 含 `StartupWMClass=phpbox-desktop`，生成任务行级追加该键，实测 WM_CLASS=二进制 basename 精确匹配）、README（对齐现状重写：8 服务 17 方法/模块能力表/验证链/用户级安装；04:12 出现于工作区的"内置引擎打包"方向草稿已存 docs/archive/ 待用户裁决，未合入——该方向此前已按 ui-spec §5.1 否决）。
