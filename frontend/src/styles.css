@@ -329,3 +329,9 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .res-dir-path{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .res-dir-size{font-size:12.5px;color:var(--text)}
 .res-dir-size.dim{color:var(--text-mute)}
+
+/* ─── 版本卡连接区（§3.3/3.4：真实端口/密码 8s 显示/DSN 复制）─── */
+.pwd-reveal{cursor:pointer;user-select:all;border-bottom:1px dashed var(--border);padding-bottom:1px}
+.pwd-reveal:hover{color:var(--accent);border-color:var(--accent)}
+.dsn-reveal{cursor:pointer;user-select:all;word-break:break-all;font-size:11px;color:var(--text-dim)}
+.dsn-reveal:hover{color:var(--accent)}

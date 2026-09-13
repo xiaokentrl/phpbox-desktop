@@ -6,6 +6,9 @@
 import * as backup$0 from "../engine/backup/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as creds$0 from "../engine/creds/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as docker$0 from "../engine/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -32,6 +35,11 @@ export type BackupEntry = backup$0.Entry;
  * ContainerSummary 透传引擎类型（前端 TS 类型由绑定生成器产出）。
  */
 export type ContainerSummary = docker$0.ContainerSummary;
+
+/**
+ * Cred 透传引擎类型。
+ */
+export type Cred = creds$0.Cred;
 
 /**
  * DirUsage 一个目录的占用（路径 + 真实字节；目录不存在为 0）。

@@ -17,6 +17,7 @@ import { ListGoProjects } from '../bindings/github.com/xiaokentrl/phpbox-desktop
 import { StartDaemon, StopDaemon } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
 import { ReadEnv, PatchEnv } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 import { ExportDiagnosticBundle } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/diag'
+import { ListCreds, GetServicePassword } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/creds'
 
 // ── 主题 ──
 const THEMES = [
@@ -73,12 +74,7 @@ const WELCOME_STEPS: { svc: string; ver: string }[] = [
   { svc: 'mysql', ver: '8.0' },
   { svc: 'nginx', ver: 'alpine' },
 ]
-const PORT_MAP: Record<string, Record<string, string>> = {
-  mysql: { '8.4': '3384', '8.0': '3380', '5.7': '3357', '9.1': '3391' },
-  pgsql: { '17': '5417', '16': '5416', '15': '5415', '14': '5414' },
-  redis: { '8': '6379', '7': '6377' },
-  nginx: { alpine: '80', '1.25': '8025' },
-}
+// 端口不再硬编码：真实值经 Creds 绑定读 .env（MYSQL_80_PORT 等契约键）
 function svcVersions(kind: string): string[] {
   return (state.installed as Record<string, string[]>)[kind] ?? []
 }
@@ -147,6 +143,45 @@ function copyCmd(cmd: string) {
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(cmd).then(() => toastBus(t('toast.copied'), 'ok'), () => toastBus(cmd, 'info', 4000))
   } else toastBus(cmd, 'info', 4000) // 非 https/localhost 降级为展示
+}
+
+// ── 服务连接凭证（§3.3/3.4 版本卡连接区）：真实端口/DSN/密码（点击显示 8s 自动掩码）──
+// creds 按 服务/版本 缓存；密码明文只在 revealPwd 的 8s 窗口内存在，超时即清除
+const svcCreds = ref<Record<string, { port: string; user: string; hasPass: boolean; dsnMask: string }>>({})
+const pwdShown = ref<Record<string, string>>({}) // key: svc/ver → 明文（8s 窗口）
+const pwdTimers: Record<string, number> = {}
+async function loadSvcCreds(svc: string) {
+  if (!['mysql', 'pgsql', 'redis'].includes(svc) || !inWails()) return
+  try {
+    const list = (await ListCreds(svc, svcVersions(svc))) ?? []
+    const map: typeof svcCreds.value = {}
+    for (const c of list) map[`${svc}/${c.version}`] = { port: c.port, user: c.user, hasPass: !!c.hasPass, dsnMask: c.dsnMask }
+    svcCreds.value = map
+  } catch { svcCreds.value = {} } // 读取失败：连接区退回无端口形态，不显示假值
+}
+function credOf(svc: string, ver: string) { return svcCreds.value[`${svc}/${ver}`] }
+async function revealPwd(svc: string, ver: string) {
+  const key = `${svc}/${ver}`
+  if (pwdShown.value[key]) { clearTimeout(pwdTimers[key]); delete pwdTimers[key]; delete pwdShown.value[key]; return } // 已显示 → 再点隐藏
+  try {
+    const p = await GetServicePassword(svc, ver)
+    if (!p) return // 无密码（未装/无键）：不显示
+    pwdShown.value = { ...pwdShown.value, [key]: p }
+    pwdTimers[key] = window.setTimeout(() => { delete pwdShown.value[key] }, 8000) // 8s 自动掩码（§3.3）
+  } catch { /* 读取失败保持掩码 */ }
+}
+function pwdLabel(svc: string, ver: string): string {
+  const key = `${svc}/${ver}`
+  return pwdShown.value[key] ?? '••••••••'
+}
+function dsnOf(svc: string, ver: string): string {
+  const c = credOf(svc, ver)
+  if (!c) return ''
+  const p = pwdShown.value[`${svc}/${ver}`]
+  if (svc === 'mysql') return `mysql -h127.0.0.1 -P${c.port} -u${c.user} -p${p ?? '***'}`
+  if (svc === 'pgsql') return `postgresql://${c.user}:${p ?? '***'}@127.0.0.1:${c.port}/postgres`
+  if (svc === 'redis') return `redis-cli -h 127.0.0.1 -p ${c.port} -a ${p ?? '***'}`
+  return ''
 }
 function openUninstallModal(kind: string, ver: string) {
   const isNginx = kind === 'nginx'
@@ -314,6 +349,7 @@ watch(() => state.route, (r) => {
   if (r === 'diag') { loadContainers(); loadPresence() } // 诊断页进入即刷新信号（存在性 + 容器状态）
   if (r === 'overview') loadResourceUsage() // 资源小部件（目录递归 stat 是实时快照，不缓存）
   if (r === 'settings') loadEnv()
+  if (['mysql', 'pgsql', 'redis'].includes(r)) { loadSvcCreds(r) } // 凭证线进入即读真实端口/密码契约
 })
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
@@ -1132,8 +1168,15 @@ function initTrayNav() {
                   </span>
                 </div>
                 <div>
-                  <div v-if="PORT_MAP[state.route]?.[v]" class="kv"><span class="k">{{ t('svc.card.port') }}</span><span class="v">{{ PORT_MAP[state.route][v] }}</span></div>
-                  <div v-if="['mysql','pgsql'].includes(state.route)" class="kv"><span class="k">{{ t('svc.card.password') }}</span><span class="v">••••••••</span></div>
+                  <div v-if="credOf(state.route, v)?.port" class="kv"><span class="k">{{ t('svc.card.port') }}</span><span class="v mono">{{ credOf(state.route, v)!.port }}</span></div>
+                  <div v-if="['mysql','pgsql','redis'].includes(state.route)" class="kv">
+                    <span class="k">{{ t('svc.card.password') }}</span>
+                    <span class="v mono pwd-reveal" @click="revealPwd(state.route, v)" :title="t('svc.card.pwdHint')">{{ credOf(state.route, v)?.hasPass === false ? t('svc.card.noPwd') : pwdLabel(state.route, v) }}</span>
+                  </div>
+                  <div v-if="credOf(state.route, v)?.port" class="kv">
+                    <span class="k">DSN</span>
+                    <span class="v mono dsn-reveal" @click="copyCmd(dsnOf(state.route, v))" :title="t('svc.card.dsnCopy')">{{ credOf(state.route, v)!.dsnMask }}</span>
+                  </div>
                   <div class="kv"><span class="k">{{ t('svc.card.config') }}</span><span class="v">{{ t('svc.card.configPath', { kind: state.route, ver: v }) }}</span></div>
                 </div>
                 <div class="version-card-foot">
