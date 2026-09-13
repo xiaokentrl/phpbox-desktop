@@ -16,7 +16,7 @@ import (
 
 // Runner spawn phpbox CLI 并流式转发输出。
 type Runner struct {
-	mu   sync.Mutex
+	mu      sync.Mutex
 	running bool
 }
 
@@ -24,6 +24,16 @@ type Runner struct {
 type TaskEvent struct {
 	Line string `json:"line"`
 	Cls  string `json:"cls"`
+}
+
+// emitViaWails 默认事件发射：经 Wails 应用事件总线；无运行中的应用时静默丢弃。
+// emitEvent 为可替换边界：集成测试注入替身后可脱离 GUI 验证 spawn 链路（§6.2）。
+var emitEvent func(name string, data TaskEvent) = emitViaWails
+
+func emitViaWails(name string, data TaskEvent) {
+	if app := application.Get(); app != nil {
+		app.Event.Emit(name, data)
+	}
 }
 
 func classify(line string) TaskEvent {
@@ -55,13 +65,12 @@ func (r *Runner) RunTask(ctx context.Context, args []string) error {
 	r.mu.Unlock()
 	defer func() { r.mu.Lock(); r.running = false; r.mu.Unlock() }()
 
-	app := application.Get()
 	cmd := exec.CommandContext(ctx, "phpbox", args...)
 	stdout, _ := cmd.StdoutPipe()
 	stderr, _ := cmd.StderrPipe()
 	if err := cmd.Start(); err != nil {
-		app.Event.Emit("task:log", TaskEvent{Line: "[ERR] " + err.Error(), Cls: "err"})
-		app.Event.Emit("task:done", TaskEvent{Line: "failed", Cls: "err"})
+		emitEvent("task:log", TaskEvent{Line: "[ERR] " + err.Error(), Cls: "err"})
+		emitEvent("task:done", TaskEvent{Line: "failed", Cls: "err"})
 		return err
 	}
 
@@ -73,8 +82,7 @@ func (r *Runner) RunTask(ctx context.Context, args []string) error {
 			if line != "" {
 				clean := stripANSI(trimNL(line))
 				if clean != "" {
-					ev := classify(clean)
-					app.Event.Emit("task:log", ev)
+					emitEvent("task:log", classify(clean))
 				}
 				if err != nil {
 					break
@@ -92,10 +100,10 @@ func (r *Runner) RunTask(ctx context.Context, args []string) error {
 	wg.Wait()
 
 	if err := cmd.Wait(); err != nil {
-		app.Event.Emit("task:done", TaskEvent{Line: "failed", Cls: "err"})
+		emitEvent("task:done", TaskEvent{Line: "failed", Cls: "err"})
 		return err
 	}
-	app.Event.Emit("task:done", TaskEvent{Line: "success", Cls: "ok"})
+	emitEvent("task:done", TaskEvent{Line: "success", Cls: "ok"})
 	return nil
 }
 
