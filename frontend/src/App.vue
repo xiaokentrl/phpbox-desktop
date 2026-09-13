@@ -557,6 +557,32 @@ async function loadOffline() {
   } catch (e) { offlineErr.value = String(e) }
 }
 const offlineTotal = computed(() => state.offlineCache.reduce((s, r) => s + r.size, 0))
+// 环形图分片（§3.9 总览：按服务分色）：真实 size 求和分组；SVG 纯手绘不引依赖
+const SVC_COLORS: Record<string, string> = {
+  php: '#8b5cf6', mysql: '#5b9cff', pgsql: '#74acff', redis: '#ff5c5c', nginx: '#3dd68c', go: '#f5a623',
+}
+const offlineSlices = computed(() => {
+  const bySvc = new Map<string, number>()
+  for (const r of state.offlineCache) bySvc.set(r.svc, (bySvc.get(r.svc) ?? 0) + r.size)
+  const total = offlineTotal.value
+  if (total <= 0) return []
+  let acc = 0 // 累计弧度（SVG arc 从 -90° 起顺时针）
+  return [...bySvc.entries()].sort((a, b) => b[1] - a[1]).map(([svc, size]) => {
+    const start = acc / total
+    acc += size
+    const end = acc / total
+    const a0 = start * Math.PI * 2 - Math.PI / 2, a1 = end * Math.PI * 2 - Math.PI / 2
+    const R = 52, CX = 60, CY = 60
+    const large = end - start > 0.5 ? 1 : 0
+    const x0 = CX + R * Math.cos(a0), y0 = CY + R * Math.sin(a0)
+    const x1 = CX + R * Math.cos(a1), y1 = CY + R * Math.sin(a1)
+    return {
+      svc, size, pct: size / total,
+      d: `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${R} ${R} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`,
+      color: SVC_COLORS[svc] || '#8b95ab',
+    }
+  })
+})
 async function verifyOffline(svc: string, ver: string) {
   const key = `${svc}/${ver}`
   if (!inWails()) { toastBus(t('off.browserHint'), 'info'); return }
@@ -1172,6 +1198,28 @@ function initTrayNav() {
               <div class="empty-icon">🗄️</div><h2>{{ t('off.empty') }}</h2><p>{{ t('off.emptyDesc') }}</p>
             </div>
             <template v-else-if="!offlineErr">
+              <!-- 总占用环形图（§3.9：按服务分色，真实字节数派生） -->
+              <div class="card donut-card">
+                <div class="donut-wrap">
+                  <svg viewBox="0 0 120 120" class="donut" role="img" :aria-label="t('off.total')">
+                    <circle cx="60" cy="60" r="52" fill="none" stroke="var(--surface-3)" stroke-width="16"/>
+                    <path v-for="s in offlineSlices" :key="s.svc" :d="s.d" fill="none" :stroke="s.color"
+                          stroke-width="16" stroke-linecap="butt"/>
+                  </svg>
+                  <div class="donut-center">
+                    <div class="donut-num">{{ fmtSize(offlineTotal) }}</div>
+                    <div class="donut-label">{{ t('off.total') }}</div>
+                  </div>
+                </div>
+                <ul class="donut-legend">
+                  <li v-for="s in offlineSlices" :key="s.svc">
+                    <span class="legend-dot" :style="{ background: s.color }"></span>
+                    <span>{{ s.svc }}</span>
+                    <span class="mono dim">{{ fmtSize(s.size) }}</span>
+                    <span class="dim">{{ (s.pct * 100).toFixed(0) }}%</span>
+                  </li>
+                </ul>
+              </div>
               <div class="summary">
                 <div class="summary-item"><div class="summary-num">{{ fmtSize(offlineTotal) }}</div><div class="summary-label">{{ t('off.total') }}</div></div>
                 <div class="summary-item"><div class="summary-num">{{ state.offlineCache.length }}</div><div class="summary-label">{{ t('off.entries') }}</div></div>
