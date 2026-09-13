@@ -265,3 +265,10 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .presence-banner .alert{display:flex;flex-direction:column;gap:6px}
 .presence-banner .alert p{margin:0;color:inherit;opacity:.85}
 .presence-banner .cmd-line{font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--border-2);border-radius:var(--r-xs);padding:6px 10px;color:var(--text-dim);word-break:break-all;user-select:all}
+
+/* ─── 诊断视图（§5.7 阶段 0 只读形态）─── */
+.diag-ok{color:var(--ok);font-size:13px;margin:4px 0}
+.diag-bad{color:var(--danger);font-size:13px;margin:4px 0}
+.diag-logbar{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+.diag-logview{background:var(--bg);border:1px solid var(--border-2);border-radius:var(--r-sm);padding:10px 12px;max-height:340px;overflow-y:auto;font-family:var(--mono);font-size:11.5px;line-height:1.55;color:var(--text-dim);white-space:pre-wrap;word-break:break-all;margin:0}
+.diag-logview code{font-family:inherit}

@@ -7,6 +7,7 @@ import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunn
 import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { loadPresence, loadContainers } from './api/data'
 import { Events } from '@wailsio/runtime'
+import { ListContainers, GetContainerLogs } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
@@ -40,6 +41,7 @@ const NAV = [
   { id: 'redis', icon: '⚡' }, { id: 'nginx', icon: '🌐' }, { id: 'go', icon: '🐹' },
   { section: 'nav.ops' },
   { id: 'backup', icon: '📦' }, { id: 'offline', icon: '🗄️' },
+  { id: 'diag', icon: '🩺' },
   { id: 'settings', icon: '⚙️' }, { id: 'overview', icon: '◈' },
 ]
 function go(r: string) { setRoute(r as Route) }
@@ -277,6 +279,7 @@ watch(() => state.route, (r) => {
   if (r === 'offline') loadOffline()
   if (r === 'sites') loadSites()
   if (r === 'go') loadGoProjects()
+  if (r === 'diag') { loadContainers(); loadPresence() } // 诊断页进入即刷新信号（存在性 + 容器状态）
   if (r === 'settings') loadEnv()
 })
 
@@ -305,6 +308,31 @@ function runDiagnostics() {
     onDone: () => { loadContainers() },
   })
   if (!ok) toastBus(t('task.busy'), 'err')
+}
+
+// ── 诊断视图（§5.7 阶段 0 降级形态：只读信号聚合，无一键修复——bash CLI 无
+//    restart/chown/sock-clean 子命令，修复属 v1.1 Go 引擎前提；CLI 兜底命令展示）──
+// 异常容器：非 running 状态（exited/restarting/paused…）即排查候选；仅 phpbox 管理的
+// 容器（有 Service label）纳入，第三方容器（如 dpanel）不掺入
+const diagAbnormal = computed(() => state.containers.filter(c => c.Service && c.State !== 'running'))
+// 日志卡状态：当前选中容器 + tail 行（50 行默认；展示原始错误，不吞不修饰）
+const diagSel = ref('')
+const diagLogs = ref<string[]>([])
+const diagLogErr = ref('')
+const diagLogBusy = ref(false)
+async function openDiagLogs(name: string) {
+  diagSel.value = name
+  diagLogs.value = []
+  diagLogErr.value = ''
+  if (!inWails()) return // 浏览器降级：不伪造日志
+  diagLogBusy.value = true
+  try {
+    diagLogs.value = (await GetContainerLogs(name, 50)) ?? []
+  } catch (e) {
+    diagLogErr.value = String(e) // 容器不存在/daemon 不可达原样呈现
+  } finally {
+    diagLogBusy.value = false
+  }
 }
 
 // ── PHP 扩展管理弹窗（真实状态 + 目标集合 → 逐个 add/remove spawn）──
@@ -860,6 +888,87 @@ function initTrayNav() {
                 <td class="mono">{{ c.Name.replace(/^\//,'') }}</td><td class="mono dim">{{ c.Image }}</td>
                 <td><span class="status-pill" :class="c.State==='running'?'pill-ok':'pill-off'"><span class="pill-dot"></span>{{ c.State }}</span></td>
               </tr></tbody></table></div>
+          </template>
+
+          <!-- ═══ 诊断（§5.7 阶段 0：只读信号聚合 + 日志 tail + CLI 兜底；无一键修复）═══ -->
+          <template v-else-if="state.route === 'diag'">
+            <header class="view-header"><div><h1>{{ t('diag.title') }}</h1><p class="view-sub">{{ t('diag.sub') }}</p></div>
+              <div class="header-actions">
+                <button class="btn" @click="loadContainers(); loadPresence()">{{ t('btn.refresh') }}</button>
+                <button class="btn" :disabled="taskRunning()" @click="runDiagnostics">⚙ {{ t('overview.diag') }}</button>
+              </div></header>
+
+            <div class="grid grid-3">
+              <article class="card">
+                <h3>{{ t('diag.sig.engine') }}</h3>
+                <template v-if="state.presence">
+                  <p v-if="state.presence.EngineDir" class="diag-ok">{{ t('diag.sig.engineOk') }}</p>
+                  <p v-else class="diag-bad">{{ t('presence.engine.title') }}</p>
+                  <p v-if="state.presence.CliInPath" class="diag-ok">{{ t('diag.sig.cliOk') }} <code class="mono">{{ state.presence.CliInPath }}</code></p>
+                  <p v-else class="diag-bad">{{ t('presence.cli.title') }}</p>
+                </template>
+                <p v-else class="dim">{{ t('diag.sig.browser') }}</p>
+              </article>
+              <article class="card">
+                <h3>{{ t('diag.sig.docker') }}</h3>
+                <p v-if="state.dockerErr" class="diag-bad">{{ state.dockerErr }}</p>
+                <template v-else-if="state.presence">
+                  <p v-if="state.presence.DockerOK" class="diag-ok">{{ t('diag.sig.dockerOk') }}</p>
+                  <p v-else class="diag-bad">{{ state.presence.DockerErr || t('presence.docker.title') }}</p>
+                </template>
+                <p v-else class="dim">{{ t('diag.sig.browser') }}</p>
+              </article>
+              <article class="card">
+                <h3>{{ t('diag.sig.containers') }}</h3>
+                <p>{{ state.containers.length }} total · <span style="color:var(--ok)">{{ state.containers.filter(c=>c.State==='running').length }} running</span></p>
+                <p v-if="diagAbnormal.length === 0" class="diag-ok">{{ t('diag.sig.allRun') }}</p>
+                <p v-else class="diag-bad">{{ t('diag.sig.abn', { n: diagAbnormal.length }) }}</p>
+              </article>
+            </div>
+
+            <div v-if="diagAbnormal.length" class="card" style="margin-top:14px">
+              <h3>{{ t('diag.abn.title') }}</h3>
+              <p class="dim">{{ t('diag.abn.desc') }}</p>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Container</th><th>Service</th><th>State</th><th></th></tr></thead>
+                <tbody><tr v-for="c in diagAbnormal" :key="c.Name">
+                  <td class="mono">{{ c.Name.replace(/^\//,'') }}</td>
+                  <td>{{ c.Service }}<span v-if="c.Version" class="dim"> / {{ c.Version }}</span></td>
+                  <td><span class="status-pill pill-off"><span class="pill-dot"></span>{{ c.State }}</span></td>
+                  <td>
+                    <button class="btn btn-sm" @click="openDiagLogs(c.Name.replace(/^\//,''))">{{ t('diag.logs.view') }}</button>
+                    <button class="btn btn-sm btn-ghost" @click="copyCmd(`docker logs ${c.Name.replace(/^\//,'')} --tail 50`)">docker logs</button>
+                  </td>
+                </tr></tbody></table></div>
+            </div>
+
+            <div class="card" style="margin-top:14px">
+              <h3>{{ t('diag.logs.title') }}</h3>
+              <p class="dim">{{ t('diag.logs.desc') }}</p>
+              <div class="diag-logbar">
+                <button v-for="c in state.containers.filter(x=>x.Service)" :key="c.Name"
+                        class="btn btn-sm" :class="{ 'btn-primary': diagSel === c.Name.replace(/^\//,'') }"
+                        @click="openDiagLogs(c.Name.replace(/^\//,''))">
+                  {{ c.Name.replace(/^\//,'') }}
+                </button>
+              </div>
+              <template v-if="diagSel">
+                <p v-if="diagLogBusy" class="dim">{{ t('diag.logs.loading') }}</p>
+                <p v-else-if="diagLogErr" class="alert alert-danger">{{ diagLogErr }}</p>
+                <pre v-else-if="diagLogs.length" class="diag-logview"><code v-for="(ln,i) in diagLogs" :key="i">{{ ln }}
+</code></pre>
+                <p v-else class="dim">{{ t('diag.logs.empty') }}</p>
+              </template>
+              <p v-else class="dim">{{ t('diag.logs.pick') }}</p>
+            </div>
+
+            <div class="card" style="margin-top:14px">
+              <h3>{{ t('diag.cli.title') }}</h3>
+              <p class="dim">{{ t('diag.cli.desc') }}</p>
+              <div class="cmd-preview" v-for="cmd in ['phpbox list', 'phpbox php list', 'phpbox site list', 'docker ps -a']" :key="cmd">
+                <span class="prompt">$ </span>{{ cmd }}
+              </div>
+            </div>
           </template>
 
           <!-- ═══ 服务线（版本卡片 + 安装/卸载真实链路）═══ -->

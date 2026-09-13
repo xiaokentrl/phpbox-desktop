@@ -29,3 +29,18 @@ func (d *Docker) ListContainers(ctx context.Context) ([]ContainerSummary, error)
 	log.Printf("[绑定] Docker.ListContainers → %d 个容器（前端绑定链路贯通）", len(items))
 	return items, nil
 }
+
+// GetContainerLogs 读容器最后 tail 行日志（诊断视图；tail 0/越界回退 50）。
+func (d *Docker) GetContainerLogs(ctx context.Context, name string, tail int) ([]string, error) {
+	c, err := docker.New()
+	if err != nil {
+		return nil, err
+	}
+	lines, err := c.ContainerLogs(ctx, name, tail)
+	if err != nil {
+		log.Printf("[绑定] Docker.GetContainerLogs(%s) 失败: %v", name, err)
+		return nil, err
+	}
+	log.Printf("[绑定] Docker.GetContainerLogs(%s) → %d 行", name, len(lines))
+	return lines, nil
+}

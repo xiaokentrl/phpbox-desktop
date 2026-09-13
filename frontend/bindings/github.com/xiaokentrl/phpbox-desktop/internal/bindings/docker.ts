@@ -15,6 +15,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * GetContainerLogs 读容器最后 tail 行日志（诊断视图；tail 0/越界回退 50）。
+ */
+export function GetContainerLogs(name: string, tail: number): $CancellablePromise<string[] | null> {
+    return $Call.ByID(4191494093, name, tail);
+}
+
+/**
  * ListContainers 返回全部容器（含已停止）。
  */
 export function ListContainers(): $CancellablePromise<$models.ContainerSummary[] | null> {
