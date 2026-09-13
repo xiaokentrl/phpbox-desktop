@@ -5,10 +5,8 @@ import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
   openInstall, openDanger, openExt, openSiteModal, closeModal, type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
-import { loadPresence } from './api/data'
+import { loadPresence, loadContainers } from './api/data'
 import { Events } from '@wailsio/runtime'
-import { cmpVerDesc } from './utils'
-import { ListContainers } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
@@ -16,7 +14,6 @@ import { ListSites, ProbeSiteHealth } from '../bindings/github.com/xiaokentrl/ph
 import { ListGoProjects } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { StartDaemon, StopDaemon } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
 import { ReadEnv, PatchEnv } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
-import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
 const THEMES = [
@@ -132,7 +129,7 @@ function containerNameFor(kind: string, ver: string): string {
 // 卡片运行状态：真实容器表（Name 是 /php84 形态）
 function containerStateFor(kind: string, ver: string): string {
   const want = containerNameFor(kind, ver)
-  const c = containers.value.find(x => x.Name.replace(/^\//, '') === want)
+  const c = state.containers.find(x => x.Name.replace(/^\//, '') === want)
   return c?.State ?? ''
 }
 function copyCmd(cmd: string) {
@@ -263,33 +260,12 @@ window.addEventListener('phpbox:toast', (e) => {
   setTimeout(() => { toasts.value = toasts.value.filter(x => x.id !== id) }, d.ttl || 3200)
 })
 
-// ── Docker 真实数据 + installed 派生 ──
-const containers = ref<ContainerSummary[]>([])
-const dockerErr = ref('')
+// ── Docker 真实数据 + installed 派生（单一实现在 api/data.ts，此处仅引用）──
 // 引擎就绪度横幅：任一条件缺失即降级展示（浏览器降级 presence=null 不显示，不做假检测）
 const presence = computed(() => state.presence
   ? { ...state.presence, degraded: !state.presence.EngineDir || !state.presence.CliInPath || !state.presence.DockerOK }
   : null)
 async function refreshContainers() { loadContainers() }
-async function loadContainers() {
-  dockerErr.value = ''
-  try {
-    const rows = (await ListContainers()) ?? []
-    containers.value = rows
-    // installed 与 bash cmd_list 同源：phpbox-service/phpbox-version labels。
-    // 缺 label 的容器（非 phpbox 管理）不纳入；Docker 不可达时保持上次列表。
-    const map: Record<string, Set<string>> = {}
-    for (const c of rows) {
-      if (!c.Service) continue
-      // nginx 单实例无 version label：回退真实镜像 tag（nginx:alpine → alpine）
-      ;(map[c.Service] ??= new Set()).add(c.Version || c.Image.split(':')[1] || '?')
-    }
-    state.installed = {}
-    for (const [svc, set] of Object.entries(map)) {
-      state.installed[svc] = [...set].sort(cmpVerDesc)
-    }
-  } catch (e) { dockerErr.value = String(e) }
-}
 onMounted(() => {
   initTheme(); loadContainers()
   onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
@@ -772,8 +748,8 @@ function initTrayNav() {
         <div class="brand-meta">
           <div class="brand-name">phpbox</div>
           <div class="brand-status">
-            <span class="dot" :class="dockerErr ? 'dot-err' : 'dot-ok'"></span>
-            <span>{{ dockerErr ? 'Engine error' : t('brand.connected') }}</span>
+            <span class="dot" :class="state.dockerErr ? 'dot-err' : 'dot-ok'"></span>
+            <span>{{ state.dockerErr ? 'Engine error' : t('brand.connected') }}</span>
           </div>
         </div>
       </div>
@@ -873,14 +849,14 @@ function initTrayNav() {
                 <button class="btn" :disabled="taskRunning()" @click="runDiagnostics">⚙ {{ t('overview.diag') }}</button>
                 <button class="btn" @click="loadContainers">{{ t('btn.refresh') }}</button>
               </div></header>
-            <p v-if="dockerErr" class="alert alert-danger">{{ dockerErr }}</p>
+            <p v-if="state.dockerErr" class="alert alert-danger">{{ state.dockerErr }}</p>
             <div v-else class="summary">
-              <div class="summary-item"><div class="summary-num">{{ containers.length }}</div><div class="summary-label">Containers</div></div>
-              <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ containers.filter(c=>c.State==='running').length }}</div><div class="summary-label">Running</div></div>
+              <div class="summary-item"><div class="summary-num">{{ state.containers.length }}</div><div class="summary-label">Containers</div></div>
+              <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.containers.filter(c=>c.State==='running').length }}</div><div class="summary-label">Running</div></div>
             </div>
             <div class="table-wrap"><table>
               <thead><tr><th>Container</th><th>Image</th><th>State</th></tr></thead>
-              <tbody><tr v-for="c in containers" :key="c.Name">
+              <tbody><tr v-for="c in state.containers" :key="c.Name">
                 <td class="mono">{{ c.Name.replace(/^\//,'') }}</td><td class="mono dim">{{ c.Image }}</td>
                 <td><span class="status-pill" :class="c.State==='running'?'pill-ok':'pill-off'"><span class="pill-dot"></span>{{ c.State }}</span></td>
               </tr></tbody></table></div>

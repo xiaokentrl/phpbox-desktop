@@ -1,5 +1,5 @@
 // 数据加载层：各 Wails 绑定 → state 单例。视图与壳只调用，不直接碰绑定。
-import { inWails, onWailsReady } from './task'
+import { inWails } from './task'
 import { state, toastBus, type OfflineRow, type SiteEntry, type GoProjectRow, type BackupRow, type EnvRow } from '../state'
 import { cmpVerDesc } from '../utils'
 import { ListContainers } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
@@ -101,7 +101,5 @@ export async function loadEnv() {
   } catch (e) { state.envErr = String(e) }
 }
 
-// 启动期统一入口：等 Wails Core 注入后拉全部真实数据
-export function loadAllOnReady() {
-  onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
-}
+// 启动入口在 App.vue onMounted（loadContainers 即时 + onWailsReady 其余域）。
+// 不提供聚合函数：各域单独调用，避免二次包装造成加载时机分裂。
