@@ -11,6 +11,7 @@ import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/php
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
 import { ListSites } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
+import { ListGoProjects } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
@@ -44,6 +45,7 @@ function go(r: string) { setRoute(r as Route) }
 function countFor(id: string): number | null {
   if (id === 'sites') return state.sites.length || null
   if (id === 'backup') return state.backups.length || null
+  if (id === 'go') return state.goProjects.length || null
   if (id === 'offline') return state.offlineCache.length || null
   const list = (state.installed as Record<string, string[]>)[id]
   return list ? list.length || null : null
@@ -193,13 +195,14 @@ async function loadContainers() {
 }
 onMounted(() => {
   initTheme(); loadContainers()
-  onWailsReady(() => { loadBackups(); loadOffline(); loadSites() })
+  onWailsReady(() => { loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
   initTrayNav() // 托盘菜单快速跳转（ui:navigate）
 })
 watch(() => state.route, (r) => {
   if (r === 'backup') loadBackups()
   if (r === 'offline') loadOffline()
   if (r === 'sites') loadSites()
+  if (r === 'go') loadGoProjects()
 })
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
@@ -556,6 +559,24 @@ function openSiteRemoveModal(domain: string) {
   })
 }
 
+// ── Go 项目（真实发现：goproject 绑定扫描 ~/www + go-<项目> 容器状态）──
+const GO_ROOT_LABEL = '~/www'
+async function loadGoProjects() {
+  if (!inWails()) return // 浏览器降级：保留空列表
+  try {
+    const rows = (await ListGoProjects()) ?? []
+    state.goProjects = rows.map(r => ({ name: r.name, dir: r.dir, running: !!r.running }))
+  } catch (e) { toastBus(String(e), 'err', 5000) }
+}
+function goTask(action: 'test' | 'stop', name: string) {
+  // go run/logs 是长驻进程（compose exec / logs -f），不走单任务抽屉（会占死队列），v0.1 专用通道
+  const label = action === 'test' ? t('gp.task.test') : t('gp.task.stop')
+  dispatchTask(`${label}·${name}`, `phpbox go ${action} ${name}`, ['go', action, name], {
+    fallback: [{ d: 400, lines: [`[INFO] 演示环境：phpbox go ${action} ${name}`] }],
+    onDone: () => { loadGoProjects() },
+  })
+}
+
 // ── 托盘导航（Go 侧 Emit ui:navigate {route}）──
 let trayNavBound = false
 function initTrayNav() {
@@ -705,8 +726,27 @@ function initTrayNav() {
 
           <!-- ═══ Go / 备份 / 离线 / 设置（占位）═══ -->
           <template v-else-if="state.route === 'go'">
-            <header class="view-header"><div><h1>Go</h1><p class="view-sub">go.mod auto-discovery</p></div></header>
-            <div class="empty"><div class="empty-icon">🐹</div><h2>Go Projects</h2><p>Projects under ~/www with go.mod are auto-discovered.</p></div>
+            <header class="view-header">
+              <div><h1>{{ t('gp.title') }}</h1><p class="view-sub">{{ t('gp.sub', { root: GO_ROOT_LABEL }) }}</p></div>
+              <div class="header-actions"><button class="btn" @click="loadGoProjects()">{{ t('btn.refresh') }}</button></div>
+            </header>
+            <div v-if="state.goProjects.length === 0" class="empty">
+              <div class="empty-icon">🐹</div><h2>{{ t('gp.empty.title') }}</h2>
+              <p>{{ t('gp.empty.desc', { root: GO_ROOT_LABEL }) }}</p>
+            </div>
+            <div v-else class="table-wrap"><table>
+              <thead><tr><th style="width:24%">{{ t('gp.col.project') }}</th><th style="width:34%">{{ t('gp.col.dir') }}</th><th style="width:16%">{{ t('gp.col.status') }}</th><th></th></tr></thead>
+              <tbody><tr v-for="p in state.goProjects" :key="p.name">
+                <td><div class="svc-cell"><span class="svc-icon">🐹</span>{{ p.name }}</div></td>
+                <td><span class="mono dim" style="font-size:12px">{{ p.dir }}</span></td>
+                <td><span class="status-pill" :class="p.running ? 'pill-ok' : 'pill-off'"><span class="pill-dot"></span>{{ p.running ? t('gp.running') : t('gp.stopped') }}</span></td>
+                <td><div class="row-actions">
+                  <button class="btn btn-sm" disabled :title="t('gp.runDisabled')">{{ t('gp.run') }}</button>
+                  <button class="btn btn-sm" :disabled="taskRunning()" @click="goTask('test', p.name)">{{ t('gp.test') }}</button>
+                  <button v-if="p.running" class="btn btn-sm" :disabled="taskRunning()" @click="goTask('stop', p.name)">{{ t('gp.stop') }}</button>
+                  <button v-else class="btn btn-sm" @click="copyCmd(`phpbox go run ${p.name}`)">{{ t('gp.copyCmd') }}</button>
+                </div></td>
+              </tr></tbody></table></div>
           </template>
           <template v-else-if="state.route === 'backup'">
             <header class="view-header"><div><h1>{{ t('bk.title') }}</h1><p class="view-sub">{{ t('bk.sub') }}</p></div>

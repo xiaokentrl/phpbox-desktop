@@ -24,6 +24,7 @@ func main() {
 			application.NewService(&bindings.Php{}),
 			application.NewService(&bindings.Offline{}),
 			application.NewService(&bindings.Site{}),
+			application.NewService(&bindings.GoProjects{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
