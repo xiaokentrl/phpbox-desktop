@@ -171,6 +171,11 @@ const ZH: Dict = {
   'svc.install': '安装',
   'overview.title': '总览', 'overview.sub': '所有服务实例一览 · 数据来自 Docker Engine API',
   'overview.diag': '环境诊断', 'ov.instances': '服务实例', 'ov.running': '运行中',
+  'welcome.title': '欢迎使用 phpbox',
+  'welcome.desc': '引擎与 Docker 已就绪，还没有任何服务。推荐先装这三件套——每步都是真实的 phpbox 事务，命令可预览复制。',
+  'welcome.bundle': 'LNMP 起步套件（推荐）',
+  'welcome.bundleDesc': 'PHP 8.4 + MySQL 8.0 + Nginx alpine：装完即可建第一个站点。',
+  'welcome.step': '第 {n} 步',
   'th.image': '镜像', 'th.state': '状态',
 }
 const EN: Dict = {
@@ -343,6 +348,11 @@ const EN: Dict = {
   'svc.install': 'Install',
   'overview.title': 'Overview', 'overview.sub': 'All service instances · live from the Docker Engine API',
   'overview.diag': 'Diagnostics', 'ov.instances': 'Instances', 'ov.running': 'Running',
+  'welcome.title': 'Welcome to phpbox',
+  'welcome.desc': 'Engine and Docker are ready, but nothing is installed yet. The recommended starter trio — each step is a real phpbox transaction with a copyable command preview.',
+  'welcome.bundle': 'LNMP starter bundle (recommended)',
+  'welcome.bundleDesc': 'PHP 8.4 + MySQL 8.0 + Nginx alpine: ready for your first site once installed.',
+  'welcome.step': 'Step {n}',
   'th.image': 'Image', 'th.state': 'State',
 }
 const DICTS: Record<string, Dict> = { 'zh-CN': ZH, 'en-US': EN }

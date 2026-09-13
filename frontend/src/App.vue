@@ -64,6 +64,13 @@ const SVC_META: Record<string, { icon: string; suggested: string[]; single?: boo
   nginx: { icon: '🌐', suggested: ['alpine', '1.25'], single: true },
 }
 // nginx 版本读 .env（NGINX_VERSION），单实例；其余线多版本
+// 欢迎卡起步套件（§5.1：PHP+MySQL+Nginx 推荐）：命令与 bash cli.sh 签名逐条核对——
+// php/mysql install 带版本参数；nginx install 无参数（固定 alpine）
+const WELCOME_STEPS: { svc: string; ver: string }[] = [
+  { svc: 'php', ver: '8.4' },
+  { svc: 'mysql', ver: '8.0' },
+  { svc: 'nginx', ver: 'alpine' },
+]
 const PORT_MAP: Record<string, Record<string, string>> = {
   mysql: { '8.4': '3384', '8.0': '3380', '5.7': '3357', '9.1': '3391' },
   pgsql: { '17': '5417', '16': '5416', '15': '5415', '14': '5414' },
@@ -268,6 +275,13 @@ const presence = computed(() => state.presence
   ? { ...state.presence, degraded: !state.presence.EngineDir || !state.presence.CliInPath || !state.presence.DockerOK }
   : null)
 async function refreshContainers() { loadContainers() }
+// 欢迎卡（§5.1 末节点）：引擎就绪 + Docker 可达 + 已装服务为零 → 推荐起步套件。
+// installed 为零的判定真实（容器 labels 派生，与 cmd_list 同源）；任一服务装好即消失。
+const showWelcome = computed(() => {
+  const p = state.presence
+  return !!p && p.EngineDir && !!p.CliInPath && p.DockerOK && !state.dockerErr
+    && Object.keys(state.installed).length === 0 && state.containers.length === 0
+})
 onMounted(() => {
   initTheme(); loadContainers()
   onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
@@ -878,11 +892,33 @@ function initTrayNav() {
                 <button class="btn" @click="loadContainers">{{ t('btn.refresh') }}</button>
               </div></header>
             <p v-if="state.dockerErr" class="alert alert-danger">{{ state.dockerErr }}</p>
+
+            <!-- 欢迎卡（§5.1 末节点）：三条件就绪 + 零服务 → 推荐起步套件（逐个真实安装，无假一键全家桶） -->
+            <div v-if="showWelcome" class="card welcome-card">
+              <h2>{{ t('welcome.title') }}</h2>
+              <p class="dim">{{ t('welcome.desc') }}</p>
+              <h3 style="margin:18px 0 4px">{{ t('welcome.bundle') }}</h3>
+              <p class="dim" style="font-size:12.5px">{{ t('welcome.bundleDesc') }}</p>
+              <div class="grid grid-3" style="margin-top:12px">
+                <article v-for="(s, i) in WELCOME_STEPS" :key="s.svc" class="welcome-step">
+                  <div class="welcome-step-head">
+                    <span>{{ t('welcome.step', { n: i + 1 }) }}</span>
+                    <span>{{ SVC_META[s.svc].icon }}</span>
+                  </div>
+                  <div class="version-tag">{{ s.ver }}</div>
+                  <code class="mono dim welcome-cmd">{{ s.svc === 'nginx' ? 'phpbox nginx install' : `phpbox ${s.svc} install ${s.ver}` }}</code>
+                  <button class="btn btn-primary btn-sm" :disabled="taskRunning()" @click="openInstallModal(s.svc)">
+                    {{ t('svc.install') }} {{ svcLabel(s.svc) }}
+                  </button>
+                </article>
+              </div>
+            </div>
+
             <div v-else class="summary">
               <div class="summary-item"><div class="summary-num">{{ state.containers.length }}</div><div class="summary-label">Containers</div></div>
               <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.containers.filter(c=>c.State==='running').length }}</div><div class="summary-label">Running</div></div>
             </div>
-            <div class="table-wrap"><table>
+            <div v-if="!showWelcome" class="table-wrap"><table>
               <thead><tr><th>Container</th><th>Image</th><th>State</th></tr></thead>
               <tbody><tr v-for="c in state.containers" :key="c.Name">
                 <td class="mono">{{ c.Name.replace(/^\//,'') }}</td><td class="mono dim">{{ c.Image }}</td>
