@@ -4,6 +4,7 @@ package bindings
 
 import (
 	"context"
+	"log"
 
 	"github.com/xiaokentrl/phpbox-desktop/internal/engine/docker"
 )
@@ -20,5 +21,11 @@ func (d *Docker) ListContainers(ctx context.Context) ([]ContainerSummary, error)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListContainers(ctx)
+	items, err := c.ListContainers(ctx)
+	if err != nil {
+		log.Printf("[绑定] Docker.ListContainers 失败: %v", err)
+		return nil, err
+	}
+	log.Printf("[绑定] Docker.ListContainers → %d 个容器（前端绑定链路贯通）", len(items))
+	return items, nil
 }
