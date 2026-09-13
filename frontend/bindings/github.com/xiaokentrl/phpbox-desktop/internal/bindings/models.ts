@@ -28,6 +28,15 @@ export type BackupEntry = backup$0.Entry;
 export type ContainerSummary = docker$0.ContainerSummary;
 
 /**
+ * EnvKV 一个 .env 条目（Editable=是否允许 GUI 修改）。
+ */
+export interface EnvKV {
+    "key": string;
+    "value": string;
+    "editable": boolean;
+}
+
+/**
  * GoProjectEntry 透传引擎类型。
  */
 export type GoProjectEntry = goproject$0.Entry;

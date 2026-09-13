@@ -3,6 +3,7 @@
 
 import * as Backup from "./backup.js";
 import * as Docker from "./docker.js";
+import * as Env from "./env.js";
 import * as GoProjects from "./goprojects.js";
 import * as Offline from "./offline.js";
 import * as Php from "./php.js";
@@ -11,6 +12,7 @@ import * as Site from "./site.js";
 export {
     Backup,
     Docker,
+    Env,
     GoProjects,
     Offline,
     Php,
@@ -21,6 +23,7 @@ export {
 export type {
     BackupEntry,
     ContainerSummary,
+    EnvKV,
     GoProjectEntry,
     OfflineEntry,
     OfflineResult,

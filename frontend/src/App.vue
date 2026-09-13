@@ -13,6 +13,7 @@ import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bind
 import { ListSites } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
 import { ListGoProjects } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { StartDaemon, StopDaemon } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
+import { ReadEnv, PatchEnv } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 import type { ContainerSummary } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/engine/docker/models'
 
 // ── 主题 ──
@@ -205,6 +206,7 @@ watch(() => state.route, (r) => {
   if (r === 'offline') loadOffline()
   if (r === 'sites') loadSites()
   if (r === 'go') loadGoProjects()
+  if (r === 'settings') loadEnv()
 })
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
@@ -626,6 +628,38 @@ watch(() => state.daemon?.lines.length, async () => { // 新日志行 → 滚到
   if (daemonLogEl.value) daemonLogEl.value.scrollTop = daemonLogEl.value.scrollHeight
 })
 
+// ── 设置页 · 环境配置（真实 .env 读写：白名单键可编辑，系统键只读）──
+interface EnvRow { key: string; value: string; editable: boolean }
+const envRows = ref<EnvRow[]>([])
+const envDraft = ref<Record<string, string>>({})
+const envErr = ref('')
+async function loadEnv() {
+  envErr.value = ''
+  if (!inWails()) return // 浏览器降级：保留 state.env 演示值
+  try {
+    const rows = (await ReadEnv()) ?? []
+    envRows.value = rows.map(r => ({ key: r.key, value: r.value, editable: !!r.editable }))
+    const d: Record<string, string> = {}
+    for (const r of rows) d[r.key] = r.value
+    envDraft.value = d
+  } catch (e) { envErr.value = String(e) }
+}
+const envDirty = computed(() => envRows.value.some(r => (envDraft.value[r.key] ?? '') !== r.value))
+async function saveEnv() {
+  if (!envDirty.value) { toastBus(t('env.noChange'), 'info'); return }
+  const changes: Record<string, string> = {}
+  for (const r of envRows.value) {
+    const now = envDraft.value[r.key] ?? ''
+    if (now !== r.value) changes[r.key] = now
+  }
+  try {
+    await PatchEnv(changes)
+    toastBus(t('env.saved'), 'ok')
+    toastBus(t('env.rebuildHint'), 'info', 4200)
+    loadEnv()
+  } catch (e) { toastBus(String(e), 'err', 5000) }
+}
+
 // ── 托盘导航（Go 侧 Emit ui:navigate {route}）──
 let trayNavBound = false
 function initTrayNav() {
@@ -889,6 +923,26 @@ function initTrayNav() {
                 <button class="pick" :class="{ selected: state.locale === 'zh-CN' }" @click="setAppLocale('zh-CN')">简体中文</button>
                 <button class="pick" :class="{ selected: state.locale === 'en-US' }" @click="setAppLocale('en-US')">English</button>
               </div>
+            </div>
+            <div class="card" style="margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div>
+                  <h3 style="font-size:14px;font-weight:600">{{ t('env.title') }}</h3>
+                  <p class="view-sub" style="margin-top:3px">{{ t('env.sub') }}</p>
+                </div>
+                <button class="btn btn-primary" :disabled="!envDirty" @click="saveEnv()">{{ t('env.save') }}</button>
+              </div>
+              <p v-if="envErr" class="alert alert-danger">{{ t('env.loadErr') }}: {{ envErr }}</p>
+              <div v-else-if="envRows.length" style="display:flex;flex-direction:column;gap:8px">
+                <div v-for="r in envRows" :key="r.key" style="display:flex;align-items:center;gap:10px">
+                  <span class="mono" style="font-size:12px;color:var(--text-mute);width:210px;flex-shrink:0">{{ r.key }}</span>
+                  <input v-if="r.editable" type="text" v-model="envDraft[r.key]"
+                         :style="(envDraft[r.key] ?? '') !== r.value ? 'border-color:var(--accent)' : ''">
+                  <span v-else class="mono dim" style="font-size:12px">{{ r.value }}</span>
+                  <span class="chip" :class="r.editable ? 'chip-accent' : ''">{{ r.editable ? t('env.editable') : t('env.readonly') }}</span>
+                </div>
+              </div>
+              <p v-else class="dim">{{ t('env.loadErr') }}</p>
             </div>
           </template>
 
