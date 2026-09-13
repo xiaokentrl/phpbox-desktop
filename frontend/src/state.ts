@@ -55,7 +55,7 @@ export interface InstallModal {
 // 备份归档行（与 Go BackupEntry 对齐：file/path/size/at）
 export interface BackupRow { file: string; path: string; size: number; at: string }
 // 离线缓存行（与 Go OfflineEntry 对齐）
-export interface OfflineRow { svc: string; ver: string; path: string; size: number; files: number; kind: string }
+export interface OfflineRow { svc: string; ver: string; path: string; size: number; files: number; kind: string; lastVerified?: string; lastVerifyOk?: boolean }
 // Go 项目行（与 Go GoProjectEntry 对齐）
 export interface GoProjectRow { name: string; dir: string; running: boolean }
 // .env 行（与 Go EnvKV 对齐；draft 为编辑副本）

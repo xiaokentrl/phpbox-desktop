@@ -79,6 +79,7 @@ export async function loadOffline() {
     const rows = (await ListOfflineCache()) ?? []
     state.offlineCache = rows.map(r => ({
       svc: r.svc, ver: r.ver, path: r.path, size: Number(r.size), files: Number(r.files), kind: r.kind,
+      lastVerified: r.lastVerified || undefined, lastVerifyOk: !!r.lastVerifyOk,
     })) as OfflineRow[]
     // 通知源（§2.2）：离线库阈值 > 2G 进通知中心（真实字节数求和，非估算）
     const total = state.offlineCache.reduce((s, r) => s + r.size, 0)

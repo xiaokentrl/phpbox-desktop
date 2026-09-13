@@ -18,11 +18,16 @@ type Entry struct {
 	Size  int64  `json:"size"` // 目录递归总字节数
 	Files int    `json:"files"`
 	Kind  string `json:"kind"` // image-tar（单 tar）/ closure（apk+pecl 闭包）
+	// LastVerified 最近一次 GUI verify 的时间（零值 = 从未验证）；记录在
+	// offline/.verify-state（文件即接口，bash 侧不读不写此文件）
+	LastVerified string `json:"lastVerified"`
+	LastVerifyOK bool   `json:"lastVerifyOk"`
 }
 
 // List 扫描 offline/ 一级服务目录下的各版本子目录。
 // 目录缺失返回空列表（安装前状态），不视为错误。
 func List(root string) ([]Entry, error) {
+	verState := ReadVerifyState(root) // 验证记录一次读入，逐条附着
 	var out []Entry
 	svcs, err := readDirNames(root)
 	if err != nil {
@@ -41,6 +46,10 @@ func List(root string) ([]Entry, error) {
 			e := Entry{Svc: svc, Ver: ver, Path: p, Kind: "image-tar"}
 			if svc == "php" {
 				e.Kind = "closure"
+			}
+			if st, ok := verState[keyOf(svc, ver)]; ok {
+				e.LastVerified = st.At.Format("2006-01-02 15:04")
+				e.LastVerifyOK = st.OK
 			}
 			size, files, err := dirSize(p)
 			if err != nil {

@@ -32,6 +32,7 @@ func sanitize(svc, ver string) error {
 }
 
 // Verify 轻量校验一条缓存：不逐字节读大 tar，只验 gzip 头 + 首 tar 条目可解析。
+// 校验结论落盘 .verify-state（GUI 真实操作记录，文件即接口）。
 func Verify(root, svc, ver string) (Result, error) {
 	if err := sanitize(svc, ver); err != nil {
 		return Result{}, err
@@ -40,10 +41,18 @@ func Verify(root, svc, ver string) (Result, error) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return Result{OK: false, Detail: "目录不存在"}, nil
 	}
+	var res Result
+	var err error
 	if svc == "php" {
-		return verifyClosure(dir)
+		res, err = verifyClosure(dir)
+	} else {
+		res, err = verifyImageTar(dir, svc, ver)
 	}
-	return verifyImageTar(dir, svc, ver)
+	if err != nil {
+		return res, err
+	}
+	WriteVerifyState(root, svc, ver, res.OK, res.Detail)
+	return res, nil
 }
 
 // verifyClosure PHP 构建闭包：apk/ 与 pecl/ 必须存在且至少各有一个包。
@@ -89,6 +98,7 @@ func verifyImageTar(dir, svc, ver string) (Result, error) {
 }
 
 // Remove 清理一条缓存：删除 offline/<svc>/<ver>/ 整目录。调用方（GUI）须先做危险确认。
+// 对应验证记录一并清除（目录已删，记录指向不存在的东西）。
 func Remove(root, svc, ver string) error {
 	if err := sanitize(svc, ver); err != nil {
 		return err
@@ -97,7 +107,11 @@ func Remove(root, svc, ver string) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return fmt.Errorf("缓存条目不存在: offline/%s/%s", svc, ver)
 	}
-	return os.RemoveAll(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		return err
+	}
+	RemoveVerifyState(root, svc, ver)
+	return nil
 }
 
 // countFiles 目录内普通文件数。

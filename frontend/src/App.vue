@@ -628,6 +628,7 @@ async function verifyOffline(svc: string, ver: string) {
     const res = await VerifyOfflineCache(svc, ver)
     offlineVerifyState.value[key] = res?.ok ? 'ok' : (res?.detail || 'bad')
     toastBus(`${key}: ${res?.detail ?? ''}`, res?.ok ? 'ok' : 'err', 5000)
+    await loadOffline() // 刷新"最后验证"列（结论已落盘 .verify-state）
   } catch (e) {
     offlineVerifyState.value[key] = 'bad'
     toastBus(String(e), 'err', 5000)
@@ -1291,7 +1292,7 @@ function initTrayNav() {
                 <div class="summary-item"><div class="summary-num">{{ new Set(state.offlineCache.map(r => r.svc)).size }}</div><div class="summary-label">{{ t('off.services') }}</div></div>
               </div>
               <div class="table-wrap"><table>
-                <thead><tr><th style="width:16%">{{ t('nav.services') }}</th><th style="width:12%">{{ t('th.php') }}</th><th style="width:12%">{{ t('th.size') }}</th><th style="width:10%">{{ t('off.files') }}</th><th style="width:26%">{{ t('th.state') }}</th><th></th></tr></thead>
+                <thead><tr><th style="width:14%">{{ t('nav.services') }}</th><th style="width:10%">{{ t('th.php') }}</th><th style="width:11%">{{ t('th.size') }}</th><th style="width:8%">{{ t('off.files') }}</th><th style="width:23%">{{ t('th.state') }}</th><th style="width:14%">{{ t('off.lastVerify') }}</th><th></th></tr></thead>
                 <tbody><tr v-for="r in state.offlineCache" :key="r.svc+'/'+r.ver">
                   <td><div class="svc-cell"><span class="svc-icon">{{ {php:'🐘',mysql:'🐬',pgsql:'🐘',redis:'⚡',nginx:'🌐'}[r.svc] || '📦' }}</span>{{ r.svc }}</div></td>
                   <td><span class="chip chip-accent">{{ r.ver }}</span></td>
@@ -1302,6 +1303,10 @@ function initTrayNav() {
                     <span v-else-if="offlineVerifyState[r.svc+'/'+r.ver] === 'ok'" class="status-pill pill-ok"><span class="pill-dot"></span>{{ t('health.up') }}</span>
                     <span v-else-if="offlineVerifyState[r.svc+'/'+r.ver]" class="status-pill pill-err"><span class="pill-dot"></span>{{ offlineVerifyState[r.svc+'/'+r.ver] }}</span>
                     <span v-else class="chip">{{ r.kind === 'closure' ? 'apk+pecl' : 'image tar' }}</span>
+                  </td>
+                  <td>
+                    <span v-if="r.lastVerified" class="mono" :style="{ color: r.lastVerifyOk ? 'var(--ok)' : 'var(--danger)', fontSize: '11.5px' }">{{ r.lastVerified }}</span>
+                    <span v-else class="dim" style="font-size:11.5px">—</span>
                   </td>
                   <td><div class="row-actions">
                     <button class="btn btn-sm" @click="verifyOffline(r.svc, r.ver)">{{ t('off.verify') }}</button>

@@ -30,6 +30,13 @@ export interface Entry {
      * image-tar（单 tar）/ closure（apk+pecl 闭包）
      */
     "kind": string;
+
+    /**
+     * LastVerified 最近一次 GUI verify 的时间（零值 = 从未验证）；记录在
+     * offline/.verify-state（文件即接口，bash 侧不读不写此文件）
+     */
+    "lastVerified": string;
+    "lastVerifyOk": boolean;
 }
 
 /**
