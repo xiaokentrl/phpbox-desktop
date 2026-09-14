@@ -9,7 +9,7 @@ import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { loadPresence, loadContainers, loadResourceUsage, loadGoImages } from './api/data'
 import { Events } from '@wailsio/runtime'
 import { ListContainers, GetContainerLogs } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
-import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
+import { ListBackups, DeleteBackup, InspectBackup, ExportBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
 import { ListSites, ProbeSiteHealth } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
@@ -325,6 +325,7 @@ function onGlobalKey(e: KeyboardEvent) {
     if (state.palette) { closeCmdPalette(); return }
     if (ngxPortModal.value) { ngxPortModal.value = false; return }
     if (goImgModal.value) { goImgModal.value = false; return }
+    if (bkModal.value) { bkModal.value = false; return }
     if (state.modal) { closeModal(); return }
     return
   }
@@ -562,6 +563,40 @@ function backupNow() {
     onDone: () => { loadBackups() },
   })
   if (!ok) toastBus(t('task.busy'), 'err')
+}
+
+// ── 备份内容查看 / 导出（§3.8）：归档是普通文件——gzip/tar 头解析只读；导出=复制到任意目录 ──
+const bkBusy = ref<Record<string, boolean>>({})
+const bkModal = ref(false)
+const bkEntries = ref<{ path: string; size: number; isDir: boolean }[]>([])
+const bkTruncated = ref(false)
+const bkModalFile = ref('')
+const bkModalErr = ref('')
+async function inspectBackup(file: string) {
+  bkModalFile.value = file
+  bkEntries.value = []
+  bkTruncated.value = false
+  bkModalErr.value = ''
+  bkModal.value = true
+  if (!inWails()) { bkModalErr.value = t('bk.browserOnly'); return }
+  bkBusy.value[file] = true
+  try {
+    const info = await InspectBackup(file)
+    bkEntries.value = (info?.entries ?? []).map(e => ({ path: e.path, size: Number(e.size), isDir: !!e.isDir }))
+    bkTruncated.value = !!info?.truncated
+  } catch (e) {
+    bkModalErr.value = String(e) // 损坏归档/gzip 头不可读：原样呈现
+  } finally { bkBusy.value[file] = false }
+}
+async function exportBackup(b: { file: string }) {
+  if (!inWails()) { toastBus(t('bk.browserOnly'), 'err', 4000); return }
+  bkBusy.value[b.file] = true
+  try {
+    const dst = await ExportBackup(b.file) // 原生保存对话框（取消返回空串，静默）
+    if (dst) toastBus(`${t('bk.exportDone')}: ${dst}`, 'ok', 6000)
+  } catch (e) {
+    toastBus(String(e), 'err', 6000)
+  } finally { bkBusy.value[b.file] = false }
 }
 function openRestoreModal(b: { file: string; path: string; size: number }) {
   openDanger({
@@ -1373,6 +1408,8 @@ function initTrayNav() {
                 <td><span class="mono dim" style="font-size:12px">{{ fmtTime(b.at) }}</span></td>
                 <td><div class="row-actions">
                   <button class="btn btn-sm" @click="copyCmd(b.path)">{{ t('common.copy') }}</button>
+                  <button class="btn btn-sm" :disabled="bkBusy[b.file]" @click="inspectBackup(b.file)">{{ t('bk.contents') }}</button>
+                  <button class="btn btn-sm" :disabled="bkBusy[b.file]" @click="exportBackup(b)">{{ t('bk.export') }}</button>
                   <button class="btn btn-sm" @click="openRestoreModal(b)">{{ t('bk.restore') }}</button>
                   <button class="btn btn-sm btn-danger" @click="openBackupDeleteModal(b)">{{ t('bk.delete') }}</button>
                 </div></td>
@@ -1499,8 +1536,28 @@ function initTrayNav() {
       </section>
     </main>
     <!-- 弹窗根：安装 / 危险确认（§8.2 三条件）/ nginx 端口（独立本地态）-->
-    <div class="modal-root" :class="{ open: !!state.modal || ngxPortModal || goImgModal }">
-      <div v-if="ngxPortModal" class="modal" @click.stop>
+    <div class="modal-root" :class="{ open: !!state.modal || ngxPortModal || goImgModal || bkModal }">
+      <div v-if="bkModal" class="modal modal-lg" @click.stop>
+        <div class="modal-head">
+          <h3>{{ t('bk.contentsTitle', { file: bkModalFile }) }}</h3>
+          <p>{{ bkTruncated ? t('bk.truncated') : t('bk.entriesCount', { n: bkEntries.length }) }}</p>
+        </div>
+        <div class="modal-body">
+          <p v-if="bkModalErr" class="alert alert-danger">{{ bkModalErr }}</p>
+          <p v-else-if="bkEntries.length === 0" class="dim">{{ t('task.running') }}</p>
+          <div v-else class="bk-entries">
+            <div v-for="(e, i) in bkEntries" :key="i" class="bk-entry" :class="{ dir: e.isDir }">
+              <span class="mono" style="font-size:11.5px">{{ e.isDir ? '📁' : '📄' }} {{ e.path }}</span>
+              <span v-if="!e.isDir" class="mono dim" style="font-size:11px">{{ fmtSize(e.size) }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn btn-sm" @click="copyCmd(`tar -tzf ${bkModalFile} | head -100`)">tar -tzf</button>
+          <button class="btn btn-primary" @click="bkModal = false">{{ t('common.close') }}</button>
+        </div>
+      </div>
+      <div v-else-if="ngxPortModal" class="modal" @click.stop>
         <div class="modal-head">
           <h3>{{ t('ngx.portSet') }}</h3>
           <p>{{ t('ngx.portDesc') }}</p>

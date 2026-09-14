@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as backup$0 from "../engine/backup/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -19,6 +23,22 @@ import * as $models from "./models.js";
  */
 export function DeleteBackup(name: string): $CancellablePromise<void> {
     return $Call.ByID(2539003230, name);
+}
+
+/**
+ * ExportBackup 弹原生保存对话框把归档复制到任意目录（backups/ 本体不动）。
+ * 返回目标路径；取消返回空串（用户主动取消不是失败）。
+ */
+export function ExportBackup(name: string): $CancellablePromise<string> {
+    return $Call.ByID(25094427, name);
+}
+
+/**
+ * InspectBackup 查看归档内容（gzip/tar 头流式解析，不解压文件）。
+ * 与 DeleteBackup 同款文件名校验（防目录逃逸）。
+ */
+export function InspectBackup(name: string): $CancellablePromise<backup$0.ArchiveInfo> {
+    return $Call.ByID(88395047, name);
 }
 
 /**

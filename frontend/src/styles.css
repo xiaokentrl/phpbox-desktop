@@ -335,3 +335,9 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .pwd-reveal:hover{color:var(--accent);border-color:var(--accent)}
 .dsn-reveal{cursor:pointer;user-select:all;word-break:break-all;font-size:11px;color:var(--text-dim)}
 .dsn-reveal:hover{color:var(--accent)}
+
+/* ─── 备份归档内容查看器（§3.8）─── */
+.bk-entries{max-height:340px;overflow-y:auto;border:1px solid var(--border-2);border-radius:8px;background:var(--bg);padding:6px}
+.bk-entry{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 10px;border-radius:6px;word-break:break-all}
+.bk-entry.dir{opacity:.75}
+.bk-entry:not(.dir):hover{background:var(--fill)}
