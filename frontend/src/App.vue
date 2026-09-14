@@ -421,6 +421,26 @@ function runDiagnostics() {
 // 异常容器：非 running 状态（exited/restarting/paused…）即排查候选；仅 phpbox 管理的
 // 容器（有 Service label）纳入，第三方容器（如 dpanel）不掺入
 const diagAbnormal = computed(() => state.containers.filter(c => c.Service && c.State !== 'running'))
+
+// ── 总览聚合（§3.11 增强）：按 phpbox 服务线分组（labels 事实源）+ 第三方容器独立区 ──
+const SVC_ICONS: Record<string, string> = { php: '🐘', mysql: '🐬', pgsql: '🐘', redis: '⚡', nginx: '🌐', go: '🐹' }
+const SVC_ORDER = ['php', 'mysql', 'pgsql', 'redis', 'nginx', 'go']
+// 分组行：Service label 归线（同一服务多版本合并成组行，rowspan 聚合展示）
+const overviewGroups = computed(() => {
+  const map = new Map<string, typeof state.containers>()
+  for (const c of state.containers) {
+    if (!c.Service) continue
+    const arr = map.get(c.Service) ?? []
+    arr.push(c)
+    map.set(c.Service, arr)
+  }
+  const order = SVC_ORDER.filter(s => map.has(s))
+  for (const s of [...map.keys()]) if (!order.includes(s)) order.push(s) // 未知服务线（labels 演进）排后但如实显示
+  return order.map(service => ({ service, icon: SVC_ICONS[service] ?? '📦', items: map.get(service)! }))
+})
+// 无 phpbox labels 的容器（如 dpanel）：不归组不隐藏，独立呈现让开发者自己判断
+const otherContainers = computed(() => state.containers.filter(c => !c.Service))
+const abnormalContainers = computed(() => state.containers.filter(c => c.Service && c.State !== 'running'))
 // 日志卡状态：当前选中容器 + tail 行（50 行默认；展示原始错误，不吞不修饰）
 const diagSel = ref('')
 const diagLogs = ref<string[]>([])
@@ -1186,12 +1206,31 @@ function initTrayNav() {
               </div>
             </div>
 
+            <!-- 异常聚合区（§3.11）：phpbox 管理容器非 running → 一眼看到 + 直达诊断页 -->
+            <div v-if="abnormalContainers.length > 0" class="alert alert-warn" style="margin-bottom:16px">
+              <strong>{{ t('overview.abnormalTitle', { n: abnormalContainers.length }) }}</strong>
+              <span class="mono" style="font-size:12px">{{ abnormalContainers.map(c => c.Name.replace(/^\//,'') + ' (' + c.State + ')').join('  ') }}</span>
+              <button class="btn btn-sm" style="margin-left:8px" @click="go('diag')">{{ t('overview.abnormalGo') }}</button>
+            </div>
+
             <div v-if="!showWelcome" class="table-wrap"><table>
-              <thead><tr><th>Container</th><th>Image</th><th>State</th></tr></thead>
-              <tbody><tr v-for="c in state.containers" :key="c.Name">
-                <td class="mono">{{ c.Name.replace(/^\//,'') }}</td><td class="mono dim">{{ c.Image }}</td>
-                <td><span class="status-pill" :class="c.State==='running'?'pill-ok':'pill-off'"><span class="pill-dot"></span>{{ c.State }}</span></td>
-              </tr></tbody></table></div>
+              <thead><tr><th style="width:18%">{{ t('overview.col.service') }}</th><th>Container</th><th>Image</th><th>State</th></tr></thead>
+              <tbody>
+                <template v-for="g in overviewGroups" :key="g.service">
+                  <tr v-for="(c, i) in g.items" :key="c.Name">
+                    <td v-if="i === 0" :rowspan="g.items.length">
+                      <span class="svc-cell"><span class="svc-icon">{{ g.icon }}</span>{{ g.service }}</span>
+                    </td>
+                    <td class="mono">{{ c.Name.replace(/^\//,'') }}</td><td class="mono dim">{{ c.Image }}</td>
+                    <td><span class="status-pill" :class="c.State==='running'?'pill-ok':'pill-off'"><span class="pill-dot"></span>{{ c.State }}</span></td>
+                  </tr>
+                </template>
+                <tr v-for="c in otherContainers" :key="c.Name">
+                  <td><span class="svc-cell"><span class="svc-icon">🧩</span>{{ t('overview.otherSvc') }}</span></td>
+                  <td class="mono">{{ c.Name.replace(/^\//,'') }}</td><td class="mono dim">{{ c.Image }}</td>
+                  <td><span class="status-pill" :class="c.State==='running'?'pill-ok':'pill-off'"><span class="pill-dot"></span>{{ c.State }}</span></td>
+                </tr>
+              </tbody></table></div>
           </template>
 
           <!-- ═══ 诊断（§5.7 阶段 0：只读信号聚合 + 日志 tail + CLI 兜底；无一键修复）═══ -->
