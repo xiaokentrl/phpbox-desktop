@@ -40,7 +40,7 @@ main.go / tray.go                 窗口、托盘、资产、服务注册
 
 ## 开发
 
-前置：Go 1.27+、Node 20+、Docker；Linux 另需 `libgtk-3-dev` 与 `libayatana-appindicator3-dev`（托盘）。
+前置：Go 1.25+、Node 20+、Docker；Linux 的 Wails v3 壳编译基于 GTK4：`libgtk-4-dev`、`libwebkitgtk-6.0-dev`、`libx11-dev`（托盘另需 `libayatana-appindicator3-dev`）。注意 `go vet`/`go test` 的类型检查同样要过 wails 的 cgo 包——这些头文件是验证链本身的前置，不只服务于最终构建。
 
 ```bash
 # bash 引擎（事实来源）：先安装 CLI
