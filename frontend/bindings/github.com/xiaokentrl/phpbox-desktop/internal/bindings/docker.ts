@@ -36,6 +36,13 @@ export function GetContainerLogs(name: string, tail: number): $CancellablePromis
 }
 
 /**
+ * GetContainerMemory 读单容器内存工作集（docker stats 同口径；容器不在运行原样报错）。
+ */
+export function GetContainerMemory(name: string): $CancellablePromise<$models.ContainerMem> {
+    return $Call.ByID(3217285249, name);
+}
+
+/**
  * ListContainers 返回全部容器（含已停止）。
  */
 export function ListContainers(): $CancellablePromise<$models.ContainerSummary[] | null> {

@@ -8,7 +8,7 @@ import { state, setRoute, setTheme, setAppLocale, initTheme, initPwdPolicy, setP
 import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { loadPresence, loadContainers, loadResourceUsage, loadGoImages } from './api/data'
 import { Events } from '@wailsio/runtime'
-import { ListContainers, GetContainerLogs, DetectFaults, FaultModes } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
+import { ListContainers, GetContainerLogs, DetectFaults, FaultModes, GetContainerMemory } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup, InspectBackup, ExportBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
@@ -216,6 +216,26 @@ async function loadSvcCreds(svc: string) {
   } catch { svcCreds.value = {} } // 读取失败：连接区退回无端口形态，不显示假值
 }
 function credOf(svc: string, ver: string) { return svcCreds.value[`${svc}/${ver}`] }
+// ── 版本卡内存占用（§3.5）：仅运行中容器；容器不在运行/读取失败 = 无该行（不显示 0 假数据）──
+const svcMem = ref<Record<string, number>>({})
+function containerMemOf(svc: string, ver: string): number | null {
+  const key = `${svc}/${ver}`
+  return key in svcMem.value ? svcMem.value[key] : null
+}
+async function loadSvcMem(svc: string) {
+  if (!['php', 'mysql', 'pgsql', 'redis', 'nginx'].includes(svc) || !inWails()) return
+  const next: Record<string, number> = {}
+  await Promise.all(svcVersions(svc).map(async v => {
+    const cname = containerNameFor(svc, v)
+    const c = state.containers.find(x => x.Name.replace(/^\//, '') === cname)
+    if (!c || c.State !== 'running') return // 只查运行中容器
+    try {
+      const m = await GetContainerMemory(cname)
+      if (m && m.memUse >= 0) next[`${svc}/${v}`] = Number(m.memUse)
+    } catch { /* 单容器失败跳过——卡上无该行，不伪造 */ }
+  }))
+  svcMem.value = next
+}
 async function revealPwd(svc: string, ver: string) {
   const key = `${svc}/${ver}`
   if (pwdShown.value[key]) { clearTimeout(pwdTimers[key]); delete pwdTimers[key]; delete pwdShown.value[key]; return } // 已显示 → 再点隐藏
@@ -455,7 +475,7 @@ watch(() => state.route, (r) => {
   if (r === 'diag') { loadContainers(); loadPresence(); loadFaults() } // 诊断页进入即刷新信号 + 故障模式检测
   if (r === 'overview') loadResourceUsage() // 资源小部件（目录递归 stat 是实时快照，不缓存）
   if (r === 'settings') loadEnv()
-  if (['mysql', 'pgsql', 'redis', 'nginx'].includes(r)) { loadSvcCreds(r) } // 凭证线进入即读真实端口/密码契约
+  if (['php', 'mysql', 'pgsql', 'redis', 'nginx'].includes(r)) { loadSvcCreds(r); loadSvcMem(r) } // 凭证 + 内存行（运行中容器实测）
 })
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
@@ -1561,6 +1581,11 @@ function initTrayNav() {
                   <div v-if="credOf(state.route, v)?.port" class="kv">
                     <span class="k">DSN</span>
                     <span class="v mono dsn-reveal" @click="copyCmd(dsnOf(state.route, v))" :title="t('svc.card.dsnCopy')">{{ credOf(state.route, v)!.dsnMask }}</span>
+                  </div>
+                  <!-- 内存占用（§3.5/通用版本卡）：docker stats 同口径工作集，仅运行中容器有值 -->
+                  <div v-if="containerMemOf(state.route, v) !== null" class="kv">
+                    <span class="k">{{ t('svc.card.mem') }}</span>
+                    <span class="v mono dim">{{ fmtSize(containerMemOf(state.route, v)!) }}</span>
                   </div>
                   <div class="kv"><span class="k">{{ t('svc.card.config') }}</span><span class="v">{{ t('svc.card.configPath', { kind: state.route, ver: v }) }}</span></div>
                 </div>

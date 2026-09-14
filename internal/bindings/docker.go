@@ -46,10 +46,26 @@ func (d *Docker) GetContainerLogs(ctx context.Context, name string, tail int) ([
 	return lines, nil
 }
 
+// ContainerMem 透传引擎类型（§3.5 版本卡内存占用）。
+type ContainerMem = docker.ContainerMem
+
+// GetContainerMemory 读单容器内存工作集（docker stats 同口径；容器不在运行原样报错）。
+func (d *Docker) GetContainerMemory(ctx context.Context, name string) (ContainerMem, error) {
+	c, err := docker.New()
+	if err != nil {
+		return ContainerMem{}, err
+	}
+	m, err := c.StatsMemory(ctx, name)
+	if err != nil {
+		return ContainerMem{}, err
+	}
+	log.Printf("[绑定] Docker.GetContainerMemory(%s) → %d 字节", name, m.MemUse)
+	return m, nil
+}
+
 // FaultHit / FaultMode 透传引擎类型（§8.1 已知故障模式库，阶段 0 只读检测）。
 type FaultHit = faultmode.Hit
 type FaultMode = faultmode.Mode
-
 // DetectFaults 扫描异常容器日志做已知故障模式匹配（只读；一键修复属 v1.1 引擎期，不提供）。
 func (d *Docker) DetectFaults(ctx context.Context) ([]FaultHit, error) {
 	c, err := docker.New()

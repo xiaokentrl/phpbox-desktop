@@ -32,6 +32,7 @@ export {
 
 export type {
     BackupEntry,
+    ContainerMem,
     ContainerSummary,
     Cred,
     DirUsage,

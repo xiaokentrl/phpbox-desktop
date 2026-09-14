@@ -38,6 +38,11 @@ import * as site$0 from "../engine/site/models.js";
 export type BackupEntry = backup$0.Entry;
 
 /**
+ * ContainerMem 透传引擎类型（§3.5 版本卡内存占用）。
+ */
+export type ContainerMem = docker$0.ContainerMem;
+
+/**
  * ContainerSummary 透传引擎类型（前端 TS 类型由绑定生成器产出）。
  */
 export type ContainerSummary = docker$0.ContainerSummary;
