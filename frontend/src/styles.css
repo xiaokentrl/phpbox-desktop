@@ -345,3 +345,11 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 /* ─── 密码显示策略（§3.10 设置安全组）─── */
 .pwd-policy-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 0;border-top:1px solid var(--border)}
 .pwd-policy-row:first-of-type{border-top:none}
+
+/* ─── 站点表列交互（§3.1：域名开浏览器 / 根目录开文件管理器）─── */
+.site-domain-cell{display:inline-flex;align-items:center;gap:6px}
+.site-domain{cursor:pointer}
+.btn-icon{border:none;background:transparent;color:var(--text-mute);cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;line-height:1}
+.btn-icon:hover{color:var(--accent);background:var(--fill)}
+.site-root{cursor:pointer}
+.site-root:hover{color:var(--accent);text-decoration:underline dotted}

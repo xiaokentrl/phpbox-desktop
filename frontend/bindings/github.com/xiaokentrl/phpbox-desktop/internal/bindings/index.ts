@@ -11,6 +11,7 @@ import * as Offline from "./offline.js";
 import * as Php from "./php.js";
 import * as Presence from "./presence.js";
 import * as Runner from "./runner.js";
+import * as Shell from "./shell.js";
 import * as Site from "./site.js";
 import * as Stats from "./stats.js";
 export {
@@ -24,6 +25,7 @@ export {
     Php,
     Presence,
     Runner,
+    Shell,
     Site,
     Stats
 };

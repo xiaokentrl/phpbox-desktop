@@ -18,6 +18,7 @@ import { StartDaemon, StopDaemon } from '../bindings/github.com/xiaokentrl/phpbo
 import { ReadEnv, PatchEnv } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 import { ExportDiagnosticBundle } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/diag'
 import { ListCreds, GetServicePassword } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/creds'
+import { OpenSiteBrowser, OpenInFileManager } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/shell'
 
 // ── 主题 ──
 const THEMES = [
@@ -836,6 +837,21 @@ function hostsToggle(domain: string, add: boolean) {
     onDone: () => { loadSites() },
   })
 }
+// ── 站点表桌面集成（§3.1 列交互）：域名 → 系统浏览器；根目录 → 文件管理器 ──
+// 完整地址带端口：NGINX_PORT 非 80 时 http://域名:端口（浏览器访问必需——hosts 解析不含端口）
+function siteFullUrl(domain: string): string {
+  const port = String(state.env.NGINX_PORT || '80')
+  return port === '80' ? `http://${domain}` : `http://${domain}:${port}`
+}
+async function openSiteInBrowser(domain: string) {
+  const url = siteFullUrl(domain)
+  if (!inWails()) { window.open(url, '_blank'); return } // 浏览器预览降级：新标签
+  try { await OpenSiteBrowser(url) } catch (e) { toastBus(String(e), 'err', 5000) }
+}
+async function openSiteRoot(s: { domain: string; root: string }) {
+  if (!inWails()) { toastBus(t('bk.browserOnly'), 'info'); return }
+  try { await OpenInFileManager(s.root) } catch (e) { toastBus(String(e), 'err', 5000) }
+}
 function openSiteRemoveModal(domain: string) {
   openDanger({
     title: t('site.removeTitle', { domain }),
@@ -1132,7 +1148,14 @@ function initTrayNav() {
               <div class="table-wrap"><table>
                 <thead><tr><th>{{ t('th.domain') }}</th><th>{{ t('th.php') }}</th><th>{{ t('th.root') }}</th><th>{{ t('th.health') }}</th><th>{{ t('th.hosts') }}</th><th></th></tr></thead>
                 <tbody><tr v-for="s in state.sites" :key="s.domain">
-                  <td><a class="site-domain" :href="'http://'+s.domain" target="_blank" rel="noopener"><span class="favicon">{{ s.domain[0].toUpperCase() }}</span>{{ s.domain }}</a></td>
+                  <td>
+                    <div class="site-domain-cell">
+                      <a class="site-domain" :title="t('site.openBrowser')" @click.prevent="openSiteInBrowser(s.domain)">
+                        <span class="favicon">{{ s.domain[0].toUpperCase() }}</span>{{ s.domain }}
+                      </a>
+                      <button class="btn-icon" :title="t('site.copyAddr')" @click="copyCmd(siteFullUrl(s.domain))">⧉</button>
+                    </div>
+                  </td>
                   <td><select class="php-select" :value="s.php" @change="onSiteSwitch($event, s.domain)">
                     <option v-for="v in installedPhp" :key="v" :value="phpVerToKey(v)" :selected="phpVerToKey(v)===s.php">{{ v }}</option>
                     <!-- 站点绑定的 PHP 已卸载：保留选项并标记（诚实呈现，切换它会被 CLI 拒绝） -->
@@ -1140,7 +1163,7 @@ function initTrayNav() {
                       {{ t('site.phpUninstalled', { ver: phpKeyLabel(s.php) }) }}
                     </option>
                   </select></td>
-                  <td><span class="mono dim">{{ s.root }}</span></td>
+                  <td><span class="mono dim site-root" :title="t('site.openRoot')" @click="openSiteRoot(s)">{{ s.root }}</span></td>
                   <td><span class="status-pill" :class="HEALTH_PILL[s.health]"><span class="pill-dot"></span>{{ t(HEALTH_TXT[s.health]) }}</span></td>
                   <td>
                     <button v-if="!s.hosts" class="btn btn-sm" @click="hostsToggle(s.domain, true)">{{ t('site.hosts.add') }}</button>

@@ -30,6 +30,7 @@ func main() {
 			application.NewService(&bindings.Diag{}),
 			application.NewService(&bindings.Stats{}),
 			application.NewService(&bindings.Creds{}),
+			application.NewService(&bindings.Shell{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
