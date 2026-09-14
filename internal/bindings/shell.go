@@ -11,10 +11,15 @@ import (
 // Shell 暴露宿主桌面集成能力。
 type Shell struct{}
 
+// validSiteURL 站点地址白名单：仅 http(s) 完整前缀（防 file:// 等任意协议经 webview 打开）。
+func validSiteURL(url string) bool {
+	return len(url) >= 8 && (url[:7] == "http://" || url[:8] == "https://")
+}
+
 // OpenSiteBrowser 用系统默认浏览器打开站点 URL。
 // url 必须是 http(s) 完整地址（前端拼接端口）；WebView 内 <a target=_blank> 不可靠，统一走此绑定。
 func (s *Shell) OpenSiteBrowser(ctx context.Context, url string) error {
-	if url == "" || (len(url) < 8 || (url[:7] != "http://" && url[:8] != "https://")) {
+	if !validSiteURL(url) {
 		return errInvalidURL
 	}
 	return application.Get().Browser.OpenURL(url)
