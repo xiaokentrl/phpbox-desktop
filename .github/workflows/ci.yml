@@ -1,0 +1,77 @@
+# phpbox Desktop CI —— 工程验证链（AGENTS.md §4.3 同序）的自动化形态。
+# 与本地验证链一致：vue-tsc → vite build → go vet → go test → build。
+# 集成测试哲学同仓：真实环境优先，环境不可用（无 Docker daemon/无 phpbox CLI）的用例自动 SKIPPED——
+# CI 绿色不等于集成全过，只证明静态链路无损（诚实验证边界）。
+# Windows 交叉编译：v0.1 待办「Windows 构建验证」的构建级部分——真机运行行为仍待人工核实，CI 不冒充。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Frontend deps
+        working-directory: frontend
+        run: npm ci
+
+      # 验证链 1：类型检查（绑定 TS 由 wails3 generate 产出并已入库，CI 直接用）
+      - name: vue-tsc
+        working-directory: frontend
+        run: npx vue-tsc --noEmit
+
+      # 验证链 2：前端构建
+      - name: vite build
+        working-directory: frontend
+        run: npm run build
+
+      # 验证链 3：Go 静态检查
+      - name: go vet
+        run: go vet ./...
+
+      # 验证链 4：Go 测试（无 Docker 的用例 SKIPPED 是预期行为，不是隐藏失败）
+      - name: go test
+        run: go test ./internal/... -v 2>&1 | tee /tmp/gotest.log
+        continue-on-error: false
+
+      # 验证链 5：Linux 生产构建（Wails 壳需要 CGO + GTK；ubuntu-latest 自带）
+      - name: CGO production build
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-3-dev libayatana-appindicator3-dev >/dev/null
+          CGO_ENABLED=1 go build -o bin/phpbox-desktop .
+
+  build-windows:
+    name: Cross-compile (windows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Windows 走 WebView2 纯系统调用无需 CGO（README/AGENTS 既有结论）
+      - name: GOOS=windows build
+        run: CGO_ENABLED=0 GOOS=windows go build -o bin/phpbox-desktop.exe .
+
+      - name: Smoke assertion
+        run: test -s bin/phpbox-desktop.exe && file bin/phpbox-desktop.exe | grep -q "PE32+ executable"
