@@ -88,7 +88,7 @@ The desktop app does not rewrite the bash engine and keeps no parallel state:
 
 ```text
 main.go / tray.go                 window, tray, assets, service registration
-  → internal/bindings             13 services / 30 methods, thin pass-through
+  → internal/bindings             13 services / 31 methods, thin pass-through
     → internal/engine             read-only parsing: docker / site / health / backup / offline / goproject / goimages / env / creds / presence / php / diagbundle / diskusage / faultmode
       → bash phpbox CLI           the engine: all mutating transactions, image builds, rollback
 ```
@@ -132,6 +132,8 @@ go build -o /tmp/phpbox-desktop .
 # regenerate bindings (after Go method signature changes)
 wails3 generate bindings -clean=true -ts -i
 ```
+
+CI runs the same chain on every push/PR to `main` (`.github/workflows/ci.yml`): linux verify (vue-tsc → vite → vet → test → CGO build) plus a `GOOS=windows` cross-compile job asserting a PE32+ executable. Integration tests that need a live Docker daemon or the `phpbox` CLI auto-SKIP in CI — a green run proves the static chain, not full integration.
 
 ## Install (Linux, user-level, no root)
 
