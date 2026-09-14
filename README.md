@@ -88,8 +88,8 @@ The desktop app does not rewrite the bash engine and keeps no parallel state:
 
 ```text
 main.go / tray.go                 window, tray, assets, service registration
-  → internal/bindings             13 services / 31 methods, thin pass-through
-    → internal/engine             read-only parsing: docker / site / health / backup / offline / goproject / goimages / env / creds / presence / php / diagbundle / diskusage / faultmode
+  → internal/bindings             14 services / 36 methods, thin pass-through
+    → internal/engine             read-only parsing: docker / site / health / backup / offline / goproject / goimages / env / creds / presence / php / diagbundle / diskusage / faultmode / terminal
       → bash phpbox CLI           the engine: all mutating transactions, image builds, rollback
 ```
 
@@ -110,7 +110,8 @@ main.go / tray.go                 window, tray, assets, service registration
 | Go images | golang:* listing with in-use state (bash-identical uninstall refusal) / install / uninstall --purge |
 | Settings | `.env` read/write (system keys whitelisted; line-level patch keeps comments and order) / password display policy (local preference, not `.env`) |
 | Diagnostics | presence banner (engine/CLI/env/Docker) / abnormal containers / log tail / known failure-pattern matching (§8.1 phase-0, read-only with real CLI ways out) / export diagnostic bundle (secrets masked) |
-| Tasks | streaming task drawer + daemon log card + ⌘K command palette / resizable sidebar & drawer |
+| Terminal | embedded interactive bash over a real PTY (xterm.js) — run any phpbox command inside the GUI; session survives route switches; Windows unsupported (honest stub error) |
+| Tasks | streaming task drawer + daemon log card + ⌘K command palette / resizable sidebar & drawer / interrupted-task detection on startup |
 
 ## Development
 
