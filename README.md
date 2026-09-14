@@ -88,7 +88,7 @@ The desktop app does not rewrite the bash engine and keeps no parallel state:
 
 ```text
 main.go / tray.go                 window, tray, assets, service registration
-  → internal/bindings             13 services / 29 methods, thin pass-through
+  → internal/bindings             13 services / 30 methods, thin pass-through
     → internal/engine             read-only parsing: docker / site / health / backup / offline / goproject / goimages / env / creds / presence / php / diagbundle / diskusage / faultmode
       → bash phpbox CLI           the engine: all mutating transactions, image builds, rollback
 ```
