@@ -22,6 +22,10 @@ func (c *Creds) ListCreds(ctx context.Context, svc string, versions []string) ([
 	if !validSvc(svc) {
 		return nil, errInvalidSvc
 	}
+	// nginx 单实例：无版本线，直接读 NGINX_PORT（不走 labels 版本校验——无 version label）
+	if svc == "nginx" {
+		return []Cred{creds.ReadNginx(envFile())}, nil
+	}
 	// 已装版本不可伪造：绑定侧独立校验 versions 与真实容器状态一致
 	real, err := installedVersions(ctx, svc)
 	if err != nil {
@@ -57,16 +61,17 @@ func (c *Creds) GetServicePassword(ctx context.Context, svc, ver string) (string
 	return "", nil // 未安装版本：无密码可显示
 }
 
-// validSvc 凭证只对有密码契约的服务开放（bash install.sh 的 _ROOT_PASSWORD 生成线）。
+// validSvc 凭证服务线：mysql/pgsql/redis 有 _ROOT_PASSWORD 契约；
+// nginx 无密码但读 NGINX_PORT（单实例键）。
 func validSvc(svc string) bool {
-	return svc == "mysql" || svc == "pgsql" || svc == "redis"
+	return svc == "mysql" || svc == "pgsql" || svc == "redis" || svc == "nginx"
 }
 
 var errInvalidSvc = &svcError{}
 
 type svcError struct{}
 
-func (e *svcError) Error() string { return "凭证仅支持 mysql/pgsql/redis 服务线" }
+func (e *svcError) Error() string { return "凭证仅支持 mysql/pgsql/redis/nginx 服务线" }
 
 // installedVersions 从容器 labels 派生某服务真实已装版本（installed 同源逻辑）。
 func installedVersions(ctx context.Context, svc string) ([]string, error) {

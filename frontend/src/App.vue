@@ -151,7 +151,7 @@ const svcCreds = ref<Record<string, { port: string; user: string; hasPass: boole
 const pwdShown = ref<Record<string, string>>({}) // key: svc/ver → 明文（8s 窗口）
 const pwdTimers: Record<string, number> = {}
 async function loadSvcCreds(svc: string) {
-  if (!['mysql', 'pgsql', 'redis'].includes(svc) || !inWails()) return
+  if (!['mysql', 'pgsql', 'redis', 'nginx'].includes(svc) || !inWails()) return
   try {
     const list = (await ListCreds(svc, svcVersions(svc))) ?? []
     const map: typeof svcCreds.value = {}
@@ -215,6 +215,40 @@ function openUninstallModal(kind: string, ver: string) {
         },
       })
     },
+  })
+}
+
+// ── nginx 快捷操作（§3.6）：reload / 修改端口——真实 CLI（nginx/cli.sh: reload · port set <端口>）──
+// 无「校验配置」按钮：nginx -t 只是 bash 内部 _nginx_validate，不是 CLI 子命令（诚实降级）
+function nginxReload() {
+  const args = ['nginx', 'reload']
+  dispatchTask(t('ngx.reloadTask'), 'phpbox nginx reload', args, {
+    doneMsg: t('ngx.reloadDone'),
+    fallback: [{ d: 400, lines: ['[INFO] 演示环境：nginx reload 模拟输出', '[OK] nginx 配置已重载'] }],
+  })
+}
+// 修改端口弹窗：本地输入态（modal 走 state 统一互斥）
+const ngxPortModal = ref(false)
+const ngxPortInput = ref('')
+const NGX_PORT_RE = /^[1-9][0-9]{0,4}$/
+const ngxPortValid = computed(() => NGX_PORT_RE.test(ngxPortInput.value) && +ngxPortInput.value <= 65535)
+function ngxPortPreview(): string {
+  const p = ngxPortInput.value.trim()
+  return `phpbox nginx port set ${NGX_PORT_RE.test(p) && +p <= 65535 ? p : '<端口>'}`
+}
+function openNginxPortModal() {
+  ngxPortInput.value = credOf('nginx', 'alpine')?.port ?? '' // 预填当前真实端口（.env NGINX_PORT）
+  ngxPortModal.value = true
+}
+function confirmNginxPort() {
+  if (!ngxPortValid.value || taskRunning()) return
+  const p = ngxPortInput.value.trim()
+  const args = ['nginx', 'port', 'set', p]
+  ngxPortModal.value = false
+  dispatchTask(t('ngx.portSetTask'), `phpbox nginx port set ${p}`, args, {
+    doneMsg: t('ngx.portSetDone', { p }),
+    fallback: [{ d: 400, lines: ['[INFO] 演示环境：端口变更模拟输出', `[OK] 端口已改为 ${p}`] }],
+    onDone: () => { loadContainers(); loadSvcCreds('nginx') }, // 新端口经 .env 重读
   })
 }
 
@@ -289,6 +323,7 @@ const ROUTE_KEYS: Route[] = ['sites', 'php', 'mysql', 'pgsql', 'redis', 'nginx',
 function onGlobalKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     if (state.palette) { closeCmdPalette(); return }
+    if (ngxPortModal.value) { ngxPortModal.value = false; return }
     if (state.modal) { closeModal(); return }
     return
   }
@@ -349,7 +384,7 @@ watch(() => state.route, (r) => {
   if (r === 'diag') { loadContainers(); loadPresence() } // 诊断页进入即刷新信号（存在性 + 容器状态）
   if (r === 'overview') loadResourceUsage() // 资源小部件（目录递归 stat 是实时快照，不缓存）
   if (r === 'settings') loadEnv()
-  if (['mysql', 'pgsql', 'redis'].includes(r)) { loadSvcCreds(r) } // 凭证线进入即读真实端口/密码契约
+  if (['mysql', 'pgsql', 'redis', 'nginx'].includes(r)) { loadSvcCreds(r) } // 凭证线进入即读真实端口/密码契约
 })
 
 // ── 任务抽屉（真实 spawn：桌面内经 Runner 绑定驱动 phpbox CLI）──
@@ -1182,7 +1217,9 @@ function initTrayNav() {
                 </div>
                 <div class="version-card-foot">
                   <button v-if="state.route === 'php'" class="btn btn-sm btn-primary" @click="openExt({ version: v })">{{ t('btn.exts') }}</button>
-                  <button v-else class="btn btn-sm" @click="copyCmd(`phpbox ${state.route} list`)">{{ t('svc.card.cmd') }}</button>
+                  <button v-if="state.route === 'nginx'" class="btn btn-sm" :disabled="taskRunning()" @click="nginxReload">{{ t('ngx.reload') }}</button>
+                  <button v-if="state.route === 'nginx'" class="btn btn-sm" :disabled="taskRunning()" @click="openNginxPortModal()">{{ t('ngx.portSet') }}</button>
+                  <button v-if="state.route !== 'php' && state.route !== 'nginx'" class="btn btn-sm" @click="copyCmd(`phpbox ${state.route} list`)">{{ t('svc.card.cmd') }}</button>
                   <button class="btn btn-sm btn-danger" @click="openUninstallModal(state.route, v)">{{ t('btn.uninstall') }}</button>
                 </div>
               </article>
@@ -1374,9 +1411,29 @@ function initTrayNav() {
         <div class="drawer-log" ref="drawerLogEl"><div v-for="(l, i) in state.task.lines" :key="i" class="log-line" :class="l.c">{{ l.t }}</div></div>
       </section>
     </main>
-    <!-- 弹窗根：安装 / 危险确认（§8.2 三条件）-->
-    <div class="modal-root" :class="{ open: !!state.modal }">
-      <div v-if="installModal" class="modal">
+    <!-- 弹窗根：安装 / 危险确认（§8.2 三条件）/ nginx 端口（独立本地态）-->
+    <div class="modal-root" :class="{ open: !!state.modal || ngxPortModal }">
+      <div v-if="ngxPortModal" class="modal" @click.stop>
+        <div class="modal-head">
+          <h3>{{ t('ngx.portSet') }}</h3>
+          <p>{{ t('ngx.portDesc') }}</p>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label>{{ t('ngx.port') }}</label>
+            <input type="text" v-model="ngxPortInput" inputmode="numeric" :placeholder="credOf('nginx', 'alpine')?.port || '80'" autocomplete="off" spellcheck="false">
+            <div v-if="ngxPortInput && !ngxPortValid" class="hint alert alert-danger" style="margin-top:8px">{{ t('ngx.portInvalid') }}</div>
+          </div>
+          <div class="field"><label>{{ t('mod.willRun') }}</label>
+            <div class="cmd-preview"><span class="prompt">$ </span>{{ ngxPortPreview() }}</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" @click="ngxPortModal = false">{{ t('mod.cancel') }}</button>
+          <button class="btn btn-primary" :disabled="!ngxPortValid || taskRunning()" @click="confirmNginxPort()">{{ t('ngx.portSetGo') }}</button>
+        </div>
+      </div>
+      <div v-else-if="installModal" class="modal">
         <div class="modal-head"><h3>{{ t('svc.install') }} {{ installModal.title }}</h3><p>{{ t('mod.installDesc') }}</p></div>
         <div class="modal-body">
           <div class="field">

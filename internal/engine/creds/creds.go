@@ -33,8 +33,22 @@ func userFor(svc string) string {
 	case "pgsql":
 		return "postgres"
 	default:
-		return "" // redis: 无用户概念（requirepass 密码认证）
+		return "" // redis: 无用户概念（requirepass 密码认证）；nginx: 无用户
 	}
+}
+
+// ReadNginx nginx 单实例的连接信息（.env NGINX_PORT 键；无密码契约）。
+func ReadNginx(envPath string) Cred {
+	kvs, _ := env.Read(envPath)
+	port := ""
+	for _, kv := range kvs {
+		if kv.Key == "NGINX_PORT" {
+			port = kv.Value
+		}
+	}
+	c := Cred{Service: "nginx", Version: "alpine", Port: port, User: ""}
+	c.DSNMask = "http://localhost:" + port
+	return c
 }
 
 // Read 列出某服务全部版本的连接信息（不含密码明文——HasPass 只报存在）。
