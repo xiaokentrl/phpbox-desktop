@@ -69,9 +69,25 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # main.go //go:embed all:frontend/dist —— 纯净 checkout 没有 gitignored 的 dist/，
+      # 交叉编译前必须真实构建前端（与本地生产构建同源，不伪造空 embed）
+      - name: Frontend deps + dist
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
       # Windows 走 WebView2 纯系统调用无需 CGO（README/AGENTS 既有结论）
       - name: GOOS=windows build
         run: CGO_ENABLED=0 GOOS=windows go build -o bin/phpbox-desktop.exe .
 
       - name: Smoke assertion
-        run: test -s bin/phpbox-desktop.exe && file bin/phpbox-desktop.exe | grep -q "PE32+ executable"
+        run: |
+          test -s bin/phpbox-desktop.exe
+          file bin/phpbox-desktop.exe | grep -q "PE32+ executable"
