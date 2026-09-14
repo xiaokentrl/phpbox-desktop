@@ -523,6 +523,15 @@ PostgreSQL 服务线（B 导航缺）· 设置页（B 缺）· 离线缓存页�
 
 外部制作的 HTML 原型经全量质检（node --check + 浏览器 11 视图巡检 + 交互链路实测）后采纳为 `docs/ui-preview/index.html` 正式预览。相对 v2.1 的增量：① 主题重命名 dark→midnight、新增 **forest** 主题（共 6 主题：midnight/light/oled/forest/ocean/sakura），每主题含独立 ok/warn/danger 色与 `color-scheme` 声明（原生控件跟随）；② **侧边栏宽度可拖拽**、任务抽屉高度可拖拽（setupDrawerResize）；③ 危险确认统一为 openDangerConfirm（含输入验证二段式）；④ 伪静态框架扩展为 9 项（none/laravel/thinkphp/yii2/thinkcmf/ci/symfony/wordpress/custom）；⑤ 命令预览引擎 buildScript + applyStateChange 状态应用层 + playTask 任务流播放器；⑥ 备份归档行内下载/恢复/删除 + pick-folder 目录选择。UI 规格正文与原型细节如有出入，以原型实现为准回写本文。
 
+### 11.8 实装期契约差异裁决（2026-09-14，GUI 实装对原型/bash 冲突项）
+
+原型与 bash 契约冲突时以 bash 为准（总纲工程执行流程 6），实装裁决记录：
+
+1. **站点创建伪静态框架 9 项选择器（§11.7④）不实装**：bash `site add` 签名仅 `<域名> --php <版本>`（lib/site/cli.sh + common/add.sh:65-83），无任何框架参数。GUI 不承诺 CLI 不存在的能力；bash 侧未来增加该参数时再对齐。
+2. **§8.1 一键修复降级为只读模式匹配**：bash CLI 无 sock 清理/属主治愈/实例重启类子命令（grep 全仓核实），修复动作按钮不出现；阶段 0 形态 = 异常容器日志关键词匹配（命中=证据）+ 真实 CLI 出路命令展示（uninstall/install/port set/backup 均为 bash 实测签名）。
+3. **批量删除源码目录行为如实标注**：bash `confirm_yes`（lib/common/log.sh:19）在无 tty 的 spawn 环境一律拒绝——GUI 删除（单删/批删）永不删 `WWW_ROOT/<站点>` 源码目录，弹窗"保留"清单如实标注。
+4. **§2.2 命令面板"全部启动"不收录**：bash CLI 无 start/stop 全部子命令（cli.sh 全文核实），命令面板只收录真实能力（导航/新建站点/立即备份/诊断/主题）。
+
 ### 11.5 准确性声明
 
 - 本文所有引擎现有能力（扩展重建五步、端口顺延、密码入 `.env`、备份容器打包、`-m` 解包、busybox 规避等）均对应当前 bash 代码真实行为。

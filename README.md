@@ -88,8 +88,8 @@ The desktop app does not rewrite the bash engine and keeps no parallel state:
 
 ```text
 main.go / tray.go                 window, tray, assets, service registration
-  → internal/bindings             12 services / 25 methods, thin pass-through
-    → internal/engine             read-only parsing: docker / site / health / backup / offline / goproject / goimages / env / creds / presence / diagbundle / diskusage
+  → internal/bindings             13 services / 29 methods, thin pass-through
+    → internal/engine             read-only parsing: docker / site / health / backup / offline / goproject / goimages / env / creds / presence / php / diagbundle / diskusage / faultmode
       → bash phpbox CLI           the engine: all mutating transactions, image builds, rollback
 ```
 
@@ -102,15 +102,15 @@ main.go / tray.go                 window, tray, assets, service registration
 
 | Module | Capabilities |
 |---|---|
-| Sites | vhost list / PHP-version switch / removal / hosts resolution / HTTP health probe (up / degraded / down; HEAD via 127.0.0.1 + Host header on the Go side) |
-| Services | five service lines (PHP / MySQL / PostgreSQL / Redis / Nginx): container status / install / uninstall / PHP extensions (the `extensions.env` file is the source of truth) / real port & password reveal (8s default, configurable) / DSN copy / nginx reload & port change |
+| Sites | vhost list / PHP-version switch / removal / hosts resolution / HTTP health probe (up / degraded / down; HEAD via 127.0.0.1 + Host header on the Go side) / batch select with batch hosts + batch delete (sequential CLI spawn) / open in browser & file manager (Shell binding, port auto-appended) |
+| Services | five service lines (PHP / MySQL / PostgreSQL / Redis / Nginx): container status / install / uninstall / PHP extensions (the `extensions.env` file is the source of truth) / real port & password reveal (timeout configurable) / DSN copy / nginx reload & port change |
 | Backup | list / create / restore / delete (path-escape rejected) / archive contents viewer (gzip/tar header stream) / export to any directory (atomic copy) |
 | Offline cache | scan / verify (tar & gzip header checks, per-entry last-verified time persisted in `offline/.verify-state`) / prune |
 | Go projects | discover / test / stop / daemon run |
 | Go images | golang:* listing with in-use state (bash-identical uninstall refusal) / install / uninstall --purge |
 | Settings | `.env` read/write (system keys whitelisted; line-level patch keeps comments and order) / password display policy (local preference, not `.env`) |
-| Diagnostics | presence banner (engine/CLI/env/Docker) / abnormal containers / log tail / export diagnostic bundle (secrets masked) |
-| Tasks | streaming task drawer + daemon log card + ⌘K command palette |
+| Diagnostics | presence banner (engine/CLI/env/Docker) / abnormal containers / log tail / known failure-pattern matching (§8.1 phase-0, read-only with real CLI ways out) / export diagnostic bundle (secrets masked) |
+| Tasks | streaming task drawer + daemon log card + ⌘K command palette / resizable sidebar & drawer |
 
 ## Development
 
