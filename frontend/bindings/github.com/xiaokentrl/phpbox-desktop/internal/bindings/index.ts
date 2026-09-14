@@ -14,6 +14,7 @@ import * as Runner from "./runner.js";
 import * as Shell from "./shell.js";
 import * as Site from "./site.js";
 import * as Stats from "./stats.js";
+import * as Terminal from "./terminal.js";
 export {
     Backup,
     Creds,
@@ -27,7 +28,8 @@ export {
     Runner,
     Shell,
     Site,
-    Stats
+    Stats,
+    Terminal
 };
 
 export type {

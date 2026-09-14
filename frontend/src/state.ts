@@ -5,7 +5,7 @@ import type { ResourceUsage as ResourceUsageModel } from '../bindings/github.com
 import { setLocale, t, type Locale } from './i18n'
 
 export type Route = 'sites' | 'php' | 'mysql' | 'pgsql' | 'redis' | 'nginx' | 'go'
-  | 'backup' | 'offline' | 'settings' | 'overview' | 'diag'
+  | 'backup' | 'offline' | 'settings' | 'overview' | 'diag' | 'terminal'
 
 // 站点行（与 Go SiteEntry 对齐：php 为服务键如 php84）
 // health：Go 侧 HEAD 探测结果（up/degraded/down；'' = 未探测）

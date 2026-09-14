@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 应用壳 + 视图路由（阶段 0：内联视图；§22.1 晋升制——复用时抽组件）
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from './i18n'
 import { state, setRoute, setTheme, setAppLocale, initTheme, initPwdPolicy, setPwdPolicy, clearTask, taskRunning, toastBus,
   openInstall, openDanger, openExt, openSiteModal, closeModal, pushNotif, notifUnread, markNotifsRead, clearNotifs,
@@ -19,6 +19,10 @@ import { ReadEnv, PatchEnv } from '../bindings/github.com/xiaokentrl/phpbox-desk
 import { ExportDiagnosticBundle } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/diag'
 import { ListCreds, GetServicePassword } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/creds'
 import { OpenSiteBrowser, OpenInFileManager } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/shell'
+import { TerminalStart, TerminalWrite, TerminalResize, TerminalStop, TerminalRunning } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/terminal'
+import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
+import '@xterm/xterm/css/xterm.css'
 
 // ── 主题 ──
 const THEMES = [
@@ -100,7 +104,7 @@ const NAV = [
   { id: 'redis', icon: '⚡' }, { id: 'nginx', icon: '🌐' }, { id: 'go', icon: '🐹' },
   { section: 'nav.ops' },
   { id: 'backup', icon: '📦' }, { id: 'offline', icon: '🗄️' },
-  { id: 'diag', icon: '🩺' },
+  { id: 'diag', icon: '🩺' }, { id: 'terminal', icon: '⌨️' },
   { id: 'settings', icon: '⚙️' }, { id: 'overview', icon: '◈' },
 ]
 function go(r: string) { setRoute(r as Route) }
@@ -1113,6 +1117,77 @@ function openGoImgUninstall(img: { tag: string; image: string; inUse: boolean; u
   })
 }
 
+// ── 嵌入式终端（§9 v2 提前落地）：xterm.js ↔ PTY 字节双向原样 ──
+// 会话生命周期同 daemon 前例（go run 切页保持）：切路由不杀 shell（滚动历史不丢），
+// 仅显式结束或应用退出时终止——app 退出 PTY master 关闭，shell 收 SIGHUP 自然清理。
+const termEl = ref<HTMLDivElement | null>(null)
+const term = ref<Terminal | null>(null)
+const termFit = new FitAddon()
+const termActive = ref(false)
+const termErr = ref('')
+let termDataBound = false
+const TERM_QUICK = [
+  { label: 'phpbox list', cli: 'phpbox list' },
+  { label: 'phpbox site list', cli: 'phpbox site list' },
+  { label: 'phpbox backup', cli: 'phpbox backup' },
+  { label: 'docker ps', cli: 'docker ps' },
+]
+function termWriteQuick(cli: string) {
+  if (!termActive.value) return
+  void TerminalWrite(cli + '\n') // 字面键入会话（回显可见），与抽屉任务通道互不相干
+}
+function termMount() {
+  if (!termEl.value || term.value) return
+  const tm = new Terminal({
+    fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace',
+    fontSize: 12.5,
+    cursorBlink: true,
+    theme: { background: 'transparent' },
+  })
+  tm.loadAddon(termFit)
+  tm.open(termEl.value)
+  try { termFit.fit() } catch { /* 容器未上屏时 fit 可抛，resize 后再试 */ }
+  void TerminalResize(tm.cols, tm.rows)
+  tm.onData(d => { void TerminalWrite(d) }) // 键入原样写 PTY（回显由行规程做）
+  tm.onResize(({ cols, rows }) => { void TerminalResize(cols, rows) })
+  term.value = tm
+  termActive.value = true
+  tm.focus()
+  if (!termDataBound) {
+    termDataBound = true
+    Events.On('terminal:data', (ev) => { // PTY 输出字节原样上屏（不吞不修饰）
+      term.value?.write(String((ev as { data?: string }).data ?? ''))
+    })
+  }
+}
+async function termOpen() {
+  termErr.value = ''
+  if (!inWails()) { termErr.value = t('term.browserOnly'); return }
+  try {
+    await TerminalStart('')
+  } catch (e) {
+    termErr.value = String(e) // 平台不支持（Windows stub）等：如实呈现
+    return
+  }
+  termMount()
+}
+async function ensureTerminal() {
+  if (term.value) { term.value.focus(); return } // 会话健在：仅聚焦
+  const running = await TerminalRunning().catch(() => false)
+  if (running) { termMount(); return } // 绑定层有会话但前端重建（异常路径）：重挂
+  termOpen()
+}
+async function termStop() {
+  termActive.value = false
+  term.value?.dispose()
+  term.value = null
+  try { await TerminalStop() } catch { /* 会话已死：槽位由输出泵清，忽略 */ }
+}
+onBeforeUnmount(() => { void termStop() })
+watch(() => state.route, (r) => {
+  if (r === 'terminal') void ensureTerminal()
+})
+
 // ── 长驻进程通道（daemon）：go run / go logs 的持续输出流 ──
 let daemonBound = false
 function initDaemonEvents() {
@@ -1820,6 +1895,22 @@ function initTrayNav() {
               <p v-else class="dim">{{ t('env.loadErr') }}</p>
             </div>
           </template>
+
+          <!-- ═══ 嵌入式终端（§9 v2 提前）：v-show 常驻不卸载——切路由保会话与滚动历史 ═══ -->
+          <div v-show="state.route === 'terminal'" class="term-view">
+            <header class="view-header">
+              <div><h1>{{ t('nav.terminal') }}</h1><p class="view-sub">{{ t('term.sub') }}</p></div>
+              <div class="header-actions">
+                <template v-if="termActive">
+                  <button class="btn btn-sm" v-for="q in TERM_QUICK" :key="q.cli" @click="termWriteQuick(q.cli)">{{ q.label }}</button>
+                  <button class="btn btn-sm btn-danger" @click="termStop">{{ t('term.stop') }}</button>
+                </template>
+                <button v-else class="btn btn-primary btn-sm" @click="termOpen">{{ t('term.start') }}</button>
+              </div>
+            </header>
+            <p v-if="termErr" class="alert alert-danger">{{ termErr }}</p>
+            <div v-show="!termErr" ref="termEl" class="term-host"></div>
+          </div>
 
         </div>
       </div>
