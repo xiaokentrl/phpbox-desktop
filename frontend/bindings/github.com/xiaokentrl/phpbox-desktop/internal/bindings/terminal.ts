@@ -26,7 +26,7 @@ export function TerminalRunning(): $CancellablePromise<boolean> {
 
 /**
  * TerminalStart 启动终端会话（$SHELL 固定为 bash/sh + TERM=xterm-256color）。
- * 已有会话时返回错误（前端应先 StopTerminal——同 daemon 单槽语义）。
+ * 已有会话时返回错误（前端应先 TerminalStop——同 daemon 单槽语义）。
  */
 export function TerminalStart(dir: string): $CancellablePromise<void> {
     return $Call.ByID(3806870667, dir);
