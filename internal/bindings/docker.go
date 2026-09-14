@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/xiaokentrl/phpbox-desktop/internal/engine/docker"
+	"github.com/xiaokentrl/phpbox-desktop/internal/engine/faultmode"
 )
 
 // Docker 暴露容器管理能力；导出方法会被 wails3 生成前端绑定。
@@ -43,4 +44,33 @@ func (d *Docker) GetContainerLogs(ctx context.Context, name string, tail int) ([
 	}
 	log.Printf("[绑定] Docker.GetContainerLogs(%s) → %d 行", name, len(lines))
 	return lines, nil
+}
+
+// FaultHit / FaultMode 透传引擎类型（§8.1 已知故障模式库，阶段 0 只读检测）。
+type FaultHit = faultmode.Hit
+type FaultMode = faultmode.Mode
+
+// DetectFaults 扫描异常容器日志做已知故障模式匹配（只读；一键修复属 v1.1 引擎期，不提供）。
+func (d *Docker) DetectFaults(ctx context.Context) ([]FaultHit, error) {
+	c, err := docker.New()
+	if err != nil {
+		return nil, err
+	}
+	items, err := c.ListContainers(ctx)
+	if err != nil {
+		log.Printf("[绑定] Docker.DetectFaults 容器列表失败: %v", err)
+		return nil, err
+	}
+	hits, err := faultmode.Detect(ctx, c, items)
+	if err != nil {
+		log.Printf("[绑定] Docker.DetectFaults 失败: %v", err)
+		return nil, err
+	}
+	log.Printf("[绑定] Docker.DetectFaults → %d 处命中", len(hits))
+	return hits, nil
+}
+
+// FaultModes 返回全部已知故障模式定义（诊断页参考表；CLI 兜底均为 bash 实测签名）。
+func (d *Docker) FaultModes() []FaultMode {
+	return faultmode.Modes()
 }

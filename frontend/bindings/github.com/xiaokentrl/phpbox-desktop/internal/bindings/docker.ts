@@ -15,6 +15,20 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * DetectFaults 扫描异常容器日志做已知故障模式匹配（只读；一键修复属 v1.1 引擎期，不提供）。
+ */
+export function DetectFaults(): $CancellablePromise<$models.FaultHit[] | null> {
+    return $Call.ByID(1519738739);
+}
+
+/**
+ * FaultModes 返回全部已知故障模式定义（诊断页参考表；CLI 兜底均为 bash 实测签名）。
+ */
+export function FaultModes(): $CancellablePromise<$models.FaultMode[] | null> {
+    return $Call.ByID(999781109);
+}
+
+/**
  * GetContainerLogs 读容器最后 tail 行日志（诊断视图；tail 0/越界回退 50）。
  */
 export function GetContainerLogs(name: string, tail: number): $CancellablePromise<string[] | null> {

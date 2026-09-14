@@ -8,7 +8,7 @@ import { state, setRoute, setTheme, setAppLocale, initTheme, initPwdPolicy, setP
 import { dispatchTask, inWails, onWailsReady } from './api/task'
 import { loadPresence, loadContainers, loadResourceUsage, loadGoImages } from './api/data'
 import { Events } from '@wailsio/runtime'
-import { ListContainers, GetContainerLogs } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
+import { ListContainers, GetContainerLogs, DetectFaults, FaultModes } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup, InspectBackup, ExportBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ReadPhpExtensions } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/php'
 import { ListOfflineCache, VerifyOfflineCache, PruneOfflineCache } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
@@ -442,7 +442,7 @@ watch(() => state.route, (r) => {
   if (r === 'offline') loadOffline()
   if (r === 'sites') loadSites()
   if (r === 'go') { loadGoProjects(); loadGoImages() }
-  if (r === 'diag') { loadContainers(); loadPresence() } // 诊断页进入即刷新信号（存在性 + 容器状态）
+  if (r === 'diag') { loadContainers(); loadPresence(); loadFaults() } // 诊断页进入即刷新信号 + 故障模式检测
   if (r === 'overview') loadResourceUsage() // 资源小部件（目录递归 stat 是实时快照，不缓存）
   if (r === 'settings') loadEnv()
   if (['mysql', 'pgsql', 'redis', 'nginx'].includes(r)) { loadSvcCreds(r) } // 凭证线进入即读真实端口/密码契约
@@ -473,6 +473,26 @@ function runDiagnostics() {
     onDone: () => { loadContainers() },
   })
   if (!ok) toastBus(t('task.busy'), 'err')
+}
+
+// ── 已知故障模式库（§8.1 阶段 0）：实时命中（容器日志模式匹配）+ 参考表 ──
+const diagFaults = ref<{ mode: { id: string; title: string; match: string[]; cli: string }; container: string; lines: string[] }[]>([])
+const faultModes = ref<{ id: string; title: string; match: string[]; cli: string }[]>([])
+const faultBusy = ref(false)
+async function loadFaults() {
+  if (!inWails()) return // 浏览器降级：不伪造检测结果
+  faultBusy.value = true
+  try {
+    const [hits, modes] = await Promise.all([DetectFaults(), FaultModes()])
+    diagFaults.value = (hits ?? []).map(h => ({
+      mode: { id: h.mode.id, title: h.mode.title, match: [...(h.mode.match ?? [])], cli: h.mode.cli },
+      container: h.container, lines: [...(h.lines ?? [])],
+    }))
+    faultModes.value = (modes ?? []).map(m => ({ id: m.id, title: m.title, match: [...(m.match ?? [])], cli: m.cli }))
+  } catch (e) {
+    diagFaults.value = [] // 检测失败 = 无命中展示（诚实：错误进日志流而非伪造）
+    faultModes.value = []
+  } finally { faultBusy.value = false }
 }
 
 // ── 诊断视图（§5.7 阶段 0 降级形态：只读信号聚合，无一键修复——bash CLI 无
@@ -1436,6 +1456,41 @@ function initTrayNav() {
                     <button class="btn btn-sm btn-ghost" @click="copyCmd(`docker logs ${c.Name.replace(/^\//,'')} --tail 50`)">docker logs</button>
                   </td>
                 </tr></tbody></table></div>
+            </div>
+
+            <!-- 已知故障模式库（§8.1 阶段 0）：实时命中（证据=容器名+命中行）+ 全量参考表；
+                 无一键修复按钮——bash CLI 无修复子命令，修复属 v1.1 引擎期，GUI 只给 CLI 出路 -->
+            <div class="card" style="margin-top:14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px">
+                <div><h3>{{ t('diag.fault.title') }}</h3><p class="dim" style="margin-top:2px">{{ t('diag.fault.desc') }}</p></div>
+                <button class="btn btn-sm" :disabled="faultBusy" @click="loadFaults">{{ t('off.verify') }}</button>
+              </div>
+              <p v-if="faultBusy" class="dim">{{ t('diag.logs.loading') }}</p>
+              <template v-else-if="diagFaults.length">
+                <div v-for="h in diagFaults" :key="h.mode.id + h.container" class="fault-hit">
+                  <div class="fault-hit-head">
+                    <span class="status-pill pill-err"><span class="pill-dot"></span>{{ t(h.mode.title) }}</span>
+                    <span class="mono dim">{{ h.container }}</span>
+                  </div>
+                  <pre class="fault-evidence"><code v-for="(ln,i) in h.lines" :key="i">{{ ln }}
+</code></pre>
+                  <div class="fault-cli"><span class="dim">{{ t('diag.fault.cli') }}</span>
+                    <code class="mono">{{ h.mode.cli }}</code>
+                    <button class="btn-icon" @click="copyCmd(h.mode.cli)" :title="t('common.copy')">⧉</button>
+                  </div>
+                </div>
+              </template>
+              <p v-else class="diag-ok">{{ t('diag.fault.none') }}</p>
+              <details style="margin-top:10px">
+                <summary class="dim" style="cursor:pointer;font-size:12.5px">{{ t('diag.fault.ref') }}</summary>
+                <div class="table-wrap" style="margin-top:8px"><table>
+                  <thead><tr><th style="width:22%">{{ t('diag.fault.col.mode') }}</th><th style="width:30%">{{ t('diag.fault.col.sig') }}</th><th>{{ t('diag.fault.col.cli') }}</th></tr></thead>
+                  <tbody><tr v-for="m in faultModes" :key="m.id">
+                    <td>{{ t(m.title) }}</td>
+                    <td><span class="mono dim" style="font-size:11.5px">{{ m.match.join(' · ') }}</span></td>
+                    <td><code class="mono" style="font-size:11.5px">{{ m.cli }}</code></td>
+                  </tr></tbody></table></div>
+              </details>
             </div>
 
             <div class="card" style="margin-top:14px">

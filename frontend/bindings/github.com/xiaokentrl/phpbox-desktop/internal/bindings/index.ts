@@ -36,6 +36,8 @@ export type {
     Cred,
     DirUsage,
     EnvKV,
+    FaultHit,
+    FaultMode,
     GoImage,
     GoProjectEntry,
     OfflineEntry,

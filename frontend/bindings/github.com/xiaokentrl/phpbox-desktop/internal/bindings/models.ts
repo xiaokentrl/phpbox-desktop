@@ -12,6 +12,9 @@ import * as creds$0 from "../engine/creds/models.js";
 import * as docker$0 from "../engine/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as faultmode$0 from "../engine/faultmode/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as goimages$0 from "../engine/goimages/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -61,6 +64,13 @@ export interface EnvKV {
     "value": string;
     "editable": boolean;
 }
+
+/**
+ * FaultHit / FaultMode 透传引擎类型（§8.1 已知故障模式库，阶段 0 只读检测）。
+ */
+export type FaultHit = faultmode$0.Hit;
+
+export type FaultMode = faultmode$0.Mode;
 
 /**
  * GoImage 透传引擎类型（§3.7 镜像管理）。
