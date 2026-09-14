@@ -29,6 +29,14 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # Wails 壳的 cgo 依赖（gtk/appindicator）——vet/test/build 任何一步做类型检查
+      # 都要过 wails application 包的 cgo 编译，无系统头文件即报 undefined: pointer，
+      # 故必须在首个 Go 步之前安装（本地 dev 机常驻这些包，CI 纯净环境必须显式装）
+      - name: System deps (cgo headers)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgtk-3-dev libayatana-appindicator3-dev >/dev/null
+
       - name: Frontend deps
         working-directory: frontend
         run: npm ci
@@ -52,12 +60,9 @@ jobs:
         run: go test ./internal/... -v 2>&1 | tee /tmp/gotest.log
         continue-on-error: false
 
-      # 验证链 5：Linux 生产构建（Wails 壳需要 CGO + GTK；ubuntu-latest 自带）
+      # 验证链 5：Linux 生产构建（系统依赖已在作业首步安装）
       - name: CGO production build
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libgtk-3-dev libayatana-appindicator3-dev >/dev/null
-          CGO_ENABLED=1 go build -o bin/phpbox-desktop .
+        run: CGO_ENABLED=1 go build -o bin/phpbox-desktop .
 
   build-windows:
     name: Cross-compile (windows)
