@@ -10,11 +10,23 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * DaemonRunning 返回当前 daemon 标识（空串=无）。
  */
 export function DaemonRunning(): $CancellablePromise<string> {
     return $Call.ByID(1844201742);
+}
+
+/**
+ * GetInterruptedTask 启动期查询上次中断的任务。读取即清除（一次性通知，不反复打扰）；
+ * 文件损坏视为无中断（清除不报错）。
+ */
+export function GetInterruptedTask(): $CancellablePromise<$models.InterruptedTask> {
+    return $Call.ByID(1315252956);
 }
 
 /**

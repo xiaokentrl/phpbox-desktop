@@ -41,6 +41,7 @@ export type {
     FaultMode,
     GoImage,
     GoProjectEntry,
+    InterruptedTask,
     OfflineEntry,
     OfflineResult,
     PresenceStatus,

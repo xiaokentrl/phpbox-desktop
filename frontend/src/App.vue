@@ -6,7 +6,7 @@ import { state, setRoute, setTheme, setAppLocale, initTheme, initPwdPolicy, setP
   openInstall, openDanger, openExt, openSiteModal, closeModal, pushNotif, notifUnread, markNotifsRead, clearNotifs,
   type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
-import { loadPresence, loadContainers, loadResourceUsage, loadGoImages } from './api/data'
+import { loadPresence, loadContainers, loadResourceUsage, loadGoImages, loadInterruptedTask } from './api/data'
 import { Events } from '@wailsio/runtime'
 import { ListContainers, GetContainerLogs, DetectFaults, FaultModes, GetContainerMemory } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup, InspectBackup, ExportBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
@@ -463,7 +463,7 @@ const showWelcome = computed(() => {
 })
 onMounted(() => {
   initTheme(); initPwdPolicy(); applyLayout(); loadContainers()
-  onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
+  onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects(); loadInterruptedTask() })
   initTrayNav() // 托盘菜单快速跳转（ui:navigate）
   initDaemonEvents() // 长驻进程通道（go run / go logs）
 })

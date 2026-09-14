@@ -104,7 +104,13 @@ func (r *Runner) RunTask(ctx context.Context, args []string) error {
 	}
 	r.running = true
 	r.mu.Unlock()
-	defer func() { r.mu.Lock(); r.running = false; r.mu.Unlock() }()
+	defer func() {
+		r.mu.Lock()
+		r.running = false
+		r.mu.Unlock()
+		clearTaskState() // 任务已终结（成功/失败都会走到这）：中断记录使命完成
+	}()
+	saveTaskState("phpbox " + strings.Join(args, " "))
 
 	cmd := exec.CommandContext(ctx, "phpbox", args...)
 	stdout, _ := cmd.StdoutPipe()
@@ -115,6 +121,22 @@ func (r *Runner) RunTask(ctx context.Context, args []string) error {
 		return err
 	}
 
+	// 阶段推进回写（§6.3 中断检测要能报出"中断于 <阶段>"）：
+	// 两个输出扫描协程并发，lastStage 变更与文件写同锁防乱序
+	var stageMu sync.Mutex
+	lastStage := ""
+	recordStage := func(phase string) {
+		if phase == "" {
+			return
+		}
+		stageMu.Lock()
+		defer stageMu.Unlock()
+		if phase != lastStage {
+			lastStage = phase
+			updateTaskStage(phase)
+		}
+	}
+
 	var wg sync.WaitGroup
 	scan := func(rd *bufio.Reader) {
 		defer wg.Done()
@@ -123,7 +145,9 @@ func (r *Runner) RunTask(ctx context.Context, args []string) error {
 			if line != "" {
 				clean := stripANSI(trimNL(line))
 				if clean != "" {
-					emitEvent("task:log", classify(clean))
+					ev := classify(clean)
+					emitEvent("task:log", ev)
+					recordStage(ev.Phase)
 				}
 				if err != nil {
 					break

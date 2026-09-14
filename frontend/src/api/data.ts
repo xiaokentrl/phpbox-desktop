@@ -1,5 +1,6 @@
 // 数据加载层：各 Wails 绑定 → state 单例。视图与壳只调用，不直接碰绑定。
 import { inWails } from './task'
+import { t } from '../i18n'
 import { state, toastBus, pushNotif, taskRunning, type OfflineRow, type SiteEntry, type GoProjectRow, type BackupRow, type EnvRow } from '../state'
 import { cmpVerDesc } from '../utils'
 import { ListContainers } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
@@ -10,6 +11,7 @@ import { ListGoProjects, ListGoImages } from '../../bindings/github.com/xiaokent
 import { ReadEnv } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 import { Detect as DetectPresence } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/presence'
 import { GetResourceUsage } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/stats'
+import { GetInterruptedTask } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/runner'
 
 // 引擎就绪度（§5.1 首启检测）：三条件独立呈现，不合并布尔——开发者要分别知道缺什么。
 // 浏览器降级保留 null（横幅不显示，不做假检测）。
@@ -18,6 +20,21 @@ export async function loadPresence() {
   try {
     state.presence = await DetectPresence() ?? null
   } catch { state.presence = null }
+}
+
+// 上次中断任务（§6.3 GUI 侧形态）：状态文件残留 = 应用退出/崩溃/断电打断了 spawn 任务。
+// bash 事务中断点状态未知——只报事实（命令/最后阶段/时间）+ 建议核实，不自动重跑不假装能清理。
+export async function loadInterruptedTask() {
+  if (!inWails()) return
+  try {
+    const it = await GetInterruptedTask()
+    if (it && it.cli) {
+      const stage = it.stage ? t('stage.' + it.stage) : t('diag.fault.none')
+      const msg = t('task.interrupted', { cli: it.cli, stage, at: it.at })
+      pushNotif('task_fail', it.cli, msg)
+      toastBus(msg, 'err', 8000)
+    }
+  } catch { /* 读取失败静默：不影响启动 */ }
 }
 
 // 资源占用（§3.11 小部件）：镜像（Docker API）+ 数据目录（递归 stat）真实测量

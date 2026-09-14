@@ -88,6 +88,26 @@ export type GoImage = goimages$0.GoImage;
 export type GoProjectEntry = goproject$0.Entry;
 
 /**
+ * InterruptedTask 上次中断的任务记录（GetInterruptedTask 返回给前端做启动通知）。
+ */
+export interface InterruptedTask {
+    /**
+     * 完整命令（phpbox mysql install 8.0）
+     */
+    "cli": string;
+
+    /**
+     * 最后推断阶段（configured/preparing/...；无阶段词为空）
+     */
+    "stage": string;
+
+    /**
+     * 任务发起时间 RFC3339
+     */
+    "at": string;
+}
+
+/**
  * OfflineEntry 透传引擎类型。
  */
 export type OfflineEntry = offline$0.Entry;
