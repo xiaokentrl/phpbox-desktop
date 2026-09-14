@@ -29,13 +29,14 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      # Wails 壳的 cgo 依赖（gtk/appindicator）——vet/test/build 任何一步做类型检查
-      # 都要过 wails application 包的 cgo 编译，无系统头文件即报 undefined: pointer，
-      # 故必须在首个 Go 步之前安装（本地 dev 机常驻这些包，CI 纯净环境必须显式装）
+      # Wails v3 beta.20 默认 Linux 路径的 cgo 依赖（#cgo pkg-config: gtk4 webkitgtk-6.0 + x11）——
+      # vet/test/build 任何一步做类型检查都要过 wails application 包的 cgo 编译，
+      # 缺头文件即报 undefined: pointer / pkg-config not found，故必须在首个 Go 步之前安装。
+      # 注意：默认构建路径是 GTK4（libgtk-4-dev），不是 GTK3——实测仅装 libgtk-3-dev 会挂（CI 第三跑教训）
       - name: System deps (cgo headers)
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libgtk-3-dev libayatana-appindicator3-dev >/dev/null
+          sudo apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev libx11-dev libayatana-appindicator3-dev >/dev/null
 
       - name: Frontend deps
         working-directory: frontend

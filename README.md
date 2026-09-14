@@ -114,7 +114,7 @@ main.go / tray.go                 window, tray, assets, service registration
 
 ## Development
 
-Prerequisites: Go 1.27+, Node 20+, Docker; on Linux also `libgtk-3-dev` and `libayatana-appindicator3-dev` (tray).
+Prerequisites: Go 1.25+, Node 20+, Docker; on Linux the Wails v3 shell builds against GTK4: `libgtk-4-dev`, `libwebkitgtk-6.0-dev`, `libx11-dev` (and `libayatana-appindicator3-dev` for the tray). `go vet`/`go test` type-check the cgo'ed wails package too, so these headers are needed for the verification chain itself, not just the final build.
 
 ```bash
 # bash engine (source of truth): install the CLI first
