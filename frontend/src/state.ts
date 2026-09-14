@@ -58,6 +58,8 @@ export interface BackupRow { file: string; path: string; size: number; at: strin
 export interface OfflineRow { svc: string; ver: string; path: string; size: number; files: number; kind: string; lastVerified?: string; lastVerifyOk?: boolean }
 // Go 项目行（与 Go GoProjectEntry 对齐）
 export interface GoProjectRow { name: string; dir: string; running: boolean }
+// Go 镜像行（与 Go GoImage 对齐：golang:* 真实镜像 + 被引用状态）
+export interface GoImageRow { tag: string; image: string; size: number; inUse: boolean; usedBy: string; default: boolean }
 // .env 行（与 Go EnvKV 对齐；draft 为编辑副本）
 export interface EnvRow { key: string; value: string; editable: boolean }
 // 长驻进程（daemon）状态：go run / go logs 等永不返回命令的独立通道
@@ -93,10 +95,12 @@ export const state = reactive({
   offlineCache: [] as OfflineRow[],
   // 真实数据：经 GoProjects 绑定发现 ~/www 下的 go.mod 项目
   goProjects: [] as GoProjectRow[],
+  // Go 镜像（§3.7）：golang:* 真实镜像 + 被引用状态（ListGoImages 加载）
+  goImages: [] as GoImageRow[],
   // 长驻进程通道（Runner.StartDaemon/StopDaemon）：单槽，与任务队列独立
   daemon: null as DaemonState | null,
   // 各数据域的加载错误（视图切换不丢失）
-  dockerErr: '', backupErr: '', offlineErr: '', siteErr: '', envErr: '',
+  dockerErr: '', backupErr: '', offlineErr: '', siteErr: '', envErr: '', goImagesErr: '',
   // 引擎就绪度（presence.Detect）：null = 未探测（浏览器降级）；字段见绑定 PresenceStatus
   presence: null as null | { EngineDir: boolean; CliInPath: string; HasEnv: boolean; DockerOK: boolean; DockerErr: string },
   // 资源占用（Stats.GetResourceUsage，§3.11）：null = 未加载（浏览器降级不显示，不伪造）

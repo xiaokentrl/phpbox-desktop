@@ -8,11 +8,41 @@ import (
 	"strings"
 
 	"github.com/xiaokentrl/phpbox-desktop/internal/engine/docker"
+	"github.com/xiaokentrl/phpbox-desktop/internal/engine/env"
+	"github.com/xiaokentrl/phpbox-desktop/internal/engine/goimages"
 	"github.com/xiaokentrl/phpbox-desktop/internal/engine/goproject"
 )
 
 // GoProjects 暴露 Go 项目发现能力。
 type GoProjects struct{}
+
+// GoImage 透传引擎类型（§3.7 镜像管理）。
+type GoImage = goimages.GoImage
+
+// ListGoImages 列出本机 golang:* 镜像及被引用状态（uninstall 前置事实）。
+// 装卸本身经 Runner spawn `phpbox go install/uninstall`（事务在 bash 侧）。
+func (g *GoProjects) ListGoImages(ctx context.Context) ([]GoImage, error) {
+	c, err := docker.New()
+	if err != nil {
+		return nil, err
+	}
+	// 当前默认版本：.env GO_DEFAULT_VERSION（bash install 会写此键，与 bash 同源）
+	defaultTag := ""
+	if kvs, err := env.Read(envFile()); err == nil {
+		for _, kv := range kvs {
+			if kv.Key == "GO_DEFAULT_VERSION" {
+				defaultTag = kv.Value
+			}
+		}
+	}
+	list, err := goimages.List(ctx, defaultTag, c)
+	if err != nil {
+		log.Printf("[绑定] GoProjects.ListGoImages 失败: %v", err)
+		return nil, err
+	}
+	log.Printf("[绑定] GoProjects.ListGoImages → %d 个镜像", len(list))
+	return list, nil
+}
 
 // GoProjectEntry 透传引擎类型。
 type GoProjectEntry = goproject.Entry

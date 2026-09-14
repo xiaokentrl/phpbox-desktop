@@ -15,6 +15,14 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * ListGoImages 列出本机 golang:* 镜像及被引用状态（uninstall 前置事实）。
+ * 装卸本身经 Runner spawn `phpbox go install/uninstall`（事务在 bash 侧）。
+ */
+export function ListGoImages(): $CancellablePromise<$models.GoImage[] | null> {
+    return $Call.ByID(2055806085);
+}
+
+/**
  * ListGoProjects 列出自动发现的 Go 项目及运行状态。
  */
 export function ListGoProjects(): $CancellablePromise<$models.GoProjectEntry[] | null> {

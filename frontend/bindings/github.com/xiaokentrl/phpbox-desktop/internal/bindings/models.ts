@@ -12,6 +12,9 @@ import * as creds$0 from "../engine/creds/models.js";
 import * as docker$0 from "../engine/docker/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as goimages$0 from "../engine/goimages/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as goproject$0 from "../engine/goproject/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
@@ -58,6 +61,11 @@ export interface EnvKV {
     "value": string;
     "editable": boolean;
 }
+
+/**
+ * GoImage 透传引擎类型（§3.7 镜像管理）。
+ */
+export type GoImage = goimages$0.GoImage;
 
 /**
  * GoProjectEntry 透传引擎类型。

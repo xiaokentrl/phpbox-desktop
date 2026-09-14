@@ -6,7 +6,7 @@ import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunn
   openInstall, openDanger, openExt, openSiteModal, closeModal, pushNotif, notifUnread, markNotifsRead, clearNotifs,
   type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
-import { loadPresence, loadContainers, loadResourceUsage } from './api/data'
+import { loadPresence, loadContainers, loadResourceUsage, loadGoImages } from './api/data'
 import { Events } from '@wailsio/runtime'
 import { ListContainers, GetContainerLogs } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/docker'
 import { ListBackups, DeleteBackup } from '../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
@@ -324,6 +324,7 @@ function onGlobalKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     if (state.palette) { closeCmdPalette(); return }
     if (ngxPortModal.value) { ngxPortModal.value = false; return }
+    if (goImgModal.value) { goImgModal.value = false; return }
     if (state.modal) { closeModal(); return }
     return
   }
@@ -380,7 +381,7 @@ watch(() => state.route, (r) => {
   if (r === 'backup') loadBackups()
   if (r === 'offline') loadOffline()
   if (r === 'sites') loadSites()
-  if (r === 'go') loadGoProjects()
+  if (r === 'go') { loadGoProjects(); loadGoImages() }
   if (r === 'diag') { loadContainers(); loadPresence() } // 诊断页进入即刷新信号（存在性 + 容器状态）
   if (r === 'overview') loadResourceUsage() // 资源小部件（目录递归 stat 是实时快照，不缓存）
   if (r === 'settings') loadEnv()
@@ -818,6 +819,63 @@ function goTask(action: 'test' | 'stop', name: string) {
   dispatchTask(`${label}·${name}`, `phpbox go ${action} ${name}`, ['go', action, name], {
     fallback: [{ d: 400, lines: [`[INFO] 演示环境：phpbox go ${action} ${name}`] }],
     onDone: () => { loadGoProjects() },
+  })
+}
+
+// ── Go 镜像管理（§3.7）：装卸经 CLI spawn（bash 契约 install [版本] / uninstall <版本> [--purge]）──
+// 版本参数形态：alpine / latest / 纯数字点分（validate_version ^[0-9]+(\.[0-9]+){0,2}$；latest 归一化 alpine）
+const GO_VER_RE = /^[0-9]+(\.[0-9]+){0,2}$/
+const goImgVer = ref('')
+const goImgModal = ref(false)
+const goImgValid = computed(() => goImgVer.value === 'alpine' || goImgVer.value === 'latest' || GO_VER_RE.test(goImgVer.value))
+function goImgPreview(): string {
+  const v = goImgVer.value.trim()
+  const ok = v === 'alpine' || v === 'latest' || GO_VER_RE.test(v)
+  return `phpbox go install ${ok ? v : '<版本>'}`
+}
+function openGoImgInstall() {
+  goImgVer.value = 'alpine' // bash 默认（_go_install requested:-alpine）
+  goImgModal.value = true
+}
+function confirmGoImgInstall() {
+  if (!goImgValid.value || taskRunning()) return
+  const v = goImgVer.value.trim()
+  const args = ['go', 'install', v]
+  goImgModal.value = false
+  dispatchTask(t('gimg.installTask'), `phpbox go install ${v}`, args, {
+    doneMsg: t('gimg.installDone', { v }),
+    fallback: [{ d: 400, lines: ['[INFO] 演示环境：Go 镜像安装模拟输出'] }],
+    onDone: () => { loadGoImages(); loadEnv() }, // GO_DEFAULT_VERSION 会写入 .env，一并重读
+  })
+}
+function openGoImgUninstall(img: { tag: string; image: string; inUse: boolean; usedBy: string; default: boolean }) {
+  if (img.inUse) { // bash 同源拒绝：ancestor 被容器用时 uninstall 会失败——GUI 直接给出原因
+    toastBus(t('gimg.inUseErr', { names: img.usedBy }), 'err', 6000)
+    return
+  }
+  openDanger({
+    title: t('gimg.unTitle', { image: img.image }),
+    description: t('gimg.unDesc'),
+    warnings: [
+      { text: t('gimg.unWarn.image', { image: img.image }) },
+      ...(img.default ? [{ text: t('gimg.unWarn.default', { v: img.tag }) }] : []),
+      { text: t('gimg.unWarn.cacheKeep'), keep: true },
+    ],
+    checkboxLabel: t('gimg.unCheck', { image: img.image }),
+    inputLabel: t('mod.confirmInput'),
+    expect: img.tag,
+    placeholder: img.tag,
+    cliPreview: `phpbox go uninstall ${img.tag}`,
+    confirmLabel: t('mod.confirmUninstall'),
+    purge: { label: t('gimg.purge') },
+    onConfirm: (purge) => {
+      const args = ['go', 'uninstall', img.tag, ...(purge ? ['--purge'] : [])]
+      dispatchTask(t('gimg.unTask'), `phpbox ${args.join(' ')}`, args, {
+        doneMsg: t('gimg.unDone', { image: img.image }),
+        fallback: [{ d: 400, lines: ['[INFO] 演示环境：Go 镜像卸载模拟输出'] }],
+        onDone: () => { loadGoImages(); loadEnv() },
+      })
+    },
   })
 }
 
@@ -1267,6 +1325,35 @@ function initTrayNav() {
                   <button v-if="p.running" class="btn btn-sm" :disabled="taskRunning()" @click="goTask('stop', p.name)">{{ t('gp.stop') }}</button>
                 </div></td>
               </tr></tbody></table></div>
+
+            <!-- Go 镜像卡（§3.7）：真实 golang:* 镜像表 + 被引用状态；装卸经 CLI 任务通道 -->
+            <div class="card" style="margin-top:16px;padding:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px">
+                <div><h3 style="font-size:14px;font-weight:600">{{ t('gimg.title') }}</h3>
+                  <p class="view-sub" style="margin:2px 0 0">{{ t('gimg.sub') }}</p></div>
+                <div class="row-actions">
+                  <button class="btn btn-sm" @click="loadGoImages()">{{ t('btn.refresh') }}</button>
+                  <button class="btn btn-sm btn-primary" :disabled="taskRunning()" @click="openGoImgInstall()">{{ t('gimg.install') }}</button>
+                </div>
+              </div>
+              <p v-if="state.goImagesErr" class="alert alert-danger">{{ t('gimg.loadErr') }}: {{ state.goImagesErr }}</p>
+              <p v-else-if="state.goImages.length === 0" class="dim" style="padding:8px 0">{{ t('gimg.empty') }}</p>
+              <div v-else class="table-wrap"><table>
+                <thead><tr><th style="width:20%">{{ t('gimg.col.tag') }}</th><th style="width:26%">{{ t('gimg.col.image') }}</th><th style="width:12%">{{ t('th.size') }}</th><th style="width:26%">{{ t('th.state') }}</th><th></th></tr></thead>
+                <tbody><tr v-for="img in state.goImages" :key="img.image">
+                  <td><div class="svc-cell"><span class="svc-icon">🐹</span>{{ img.tag }}
+                    <span v-if="img.default" class="chip chip-accent" style="margin-left:6px">{{ t('gimg.defaultChip') }}</span></div></td>
+                  <td><span class="mono dim" style="font-size:12px">{{ img.image }}</span></td>
+                  <td><span class="mono dim">{{ fmtSize(img.size) }}</span></td>
+                  <td>
+                    <span v-if="img.inUse" class="status-pill pill-warn" :title="img.usedBy"><span class="pill-dot"></span>{{ t('gimg.inUse') }}</span>
+                    <span v-else class="status-pill pill-off"><span class="pill-dot"></span>{{ t('gimg.idle') }}</span>
+                  </td>
+                  <td><div class="row-actions">
+                    <button class="btn btn-sm btn-danger" :disabled="taskRunning()" @click="openGoImgUninstall(img)">{{ t('btn.uninstall') }}</button>
+                  </div></td>
+                </tr></tbody></table></div>
+            </div>
           </template>
           <template v-else-if="state.route === 'backup'">
             <header class="view-header"><div><h1>{{ t('bk.title') }}</h1><p class="view-sub">{{ t('bk.sub') }}</p></div>
@@ -1412,7 +1499,7 @@ function initTrayNav() {
       </section>
     </main>
     <!-- 弹窗根：安装 / 危险确认（§8.2 三条件）/ nginx 端口（独立本地态）-->
-    <div class="modal-root" :class="{ open: !!state.modal || ngxPortModal }">
+    <div class="modal-root" :class="{ open: !!state.modal || ngxPortModal || goImgModal }">
       <div v-if="ngxPortModal" class="modal" @click.stop>
         <div class="modal-head">
           <h3>{{ t('ngx.portSet') }}</h3>
@@ -1431,6 +1518,30 @@ function initTrayNav() {
         <div class="modal-foot">
           <button class="btn" @click="ngxPortModal = false">{{ t('mod.cancel') }}</button>
           <button class="btn btn-primary" :disabled="!ngxPortValid || taskRunning()" @click="confirmNginxPort()">{{ t('ngx.portSetGo') }}</button>
+        </div>
+      </div>
+      <div v-else-if="goImgModal" class="modal" @click.stop>
+        <div class="modal-head">
+          <h3>{{ t('gimg.installTitle') }}</h3>
+          <p>{{ t('gimg.installDesc') }}</p>
+        </div>
+        <div class="modal-body">
+          <div class="field">
+            <label>{{ t('mod.version') }}</label>
+            <input type="text" v-model="goImgVer" placeholder="alpine" autocomplete="off" spellcheck="false">
+            <div class="quick-picks">
+              <button v-for="v in ['alpine', 'latest', '1.25', '1.24', '1.23']" :key="v" class="pick" :class="{ selected: goImgVer === v }" @click="goImgVer = v">{{ v }}</button>
+            </div>
+            <div v-if="goImgVer && !goImgValid" class="hint alert alert-danger" style="margin-top:8px">{{ t('gimg.verInvalid') }}</div>
+          </div>
+          <div class="alert alert-warn">{{ t('gimg.installWarn') }}</div>
+          <div class="field"><label>{{ t('mod.willRun') }}</label>
+            <div class="cmd-preview"><span class="prompt">$ </span>{{ goImgPreview() }}</div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button class="btn" @click="goImgModal = false">{{ t('mod.cancel') }}</button>
+          <button class="btn btn-primary" :disabled="!goImgValid || taskRunning()" @click="confirmGoImgInstall()">{{ t('mod.install') }}</button>
         </div>
       </div>
       <div v-else-if="installModal" class="modal">

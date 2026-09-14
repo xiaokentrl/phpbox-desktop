@@ -6,7 +6,7 @@ import { ListContainers } from '../../bindings/github.com/xiaokentrl/phpbox-desk
 import { ListBackups } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/backup'
 import { ListOfflineCache } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/offline'
 import { ListSites, ProbeSiteHealth } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/site'
-import { ListGoProjects } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
+import { ListGoProjects, ListGoImages } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/goprojects'
 import { ReadEnv } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/env'
 import { Detect as DetectPresence } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/presence'
 import { GetResourceUsage } from '../../bindings/github.com/xiaokentrl/phpbox-desktop/internal/bindings/stats'
@@ -117,6 +117,19 @@ export async function loadGoProjects() {
     const rows = (await ListGoProjects()) ?? []
     state.goProjects = rows.map(r => ({ name: r.name, dir: r.dir, running: !!r.running })) as GoProjectRow[]
   } catch (e) { toastBus(String(e), 'err', 5000) }
+}
+
+// Go 镜像（§3.7）：golang:* 真实镜像表 + 被引用状态（uninstall 前置事实）
+export async function loadGoImages() {
+  state.goImagesErr = ''
+  if (!inWails()) return
+  try {
+    const rows = (await ListGoImages()) ?? []
+    state.goImages = rows.map(r => ({
+      tag: r.tag, image: r.image, size: Number(r.size), inUse: !!r.inUse,
+      usedBy: r.usedBy || '', default: !!r.default,
+    }))
+  } catch (e) { state.goImagesErr = String(e) }
 }
 
 export async function loadEnv() {

@@ -34,6 +34,7 @@ export type {
     Cred,
     DirUsage,
     EnvKV,
+    GoImage,
     GoProjectEntry,
     OfflineEntry,
     OfflineResult,
