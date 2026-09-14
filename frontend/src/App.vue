@@ -29,6 +29,61 @@ const THEMES = [
   { id: 'ocean', zh: '深海蓝', en: 'Ocean' },
   { id: 'sakura', zh: '樱花粉', en: 'Sakura' },
 ]
+
+// ── 布局拖拽（原型 §11.7② setupSidebarResize/setupDrawerResize 契约）：限位 + 持久化 + 双击复位 ──
+const SIDEBAR_MIN = 64, SIDEBAR_MAX = 380, DRAWER_MIN = 120, DRAWER_MAX = 600
+const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
+const sidebarWidth = ref(clamp(parseInt(localStorage.getItem('phpbox-sidebar-width') || '200', 10), SIDEBAR_MIN, SIDEBAR_MAX))
+const drawerHeight = ref(clamp(parseInt(localStorage.getItem('phpbox-drawer-height') || '260', 10), DRAWER_MIN, DRAWER_MAX))
+function applyLayout() {
+  document.documentElement.style.setProperty('--sidebar-width', sidebarWidth.value + 'px')
+  try {
+    localStorage.setItem('phpbox-sidebar-width', String(sidebarWidth.value))
+    localStorage.setItem('phpbox-drawer-height', String(drawerHeight.value))
+  } catch { /* 忽略 */ }
+}
+// 侧边栏拖拽（window.innerWidth ≤ 960 收起布局不可拖，原型同款）
+const dragSidebar = ref(false)
+function sidebarResizeDown(e: MouseEvent) {
+  if (window.innerWidth <= 960) return
+  e.preventDefault()
+  const startX = e.clientX, startW = sidebarWidth.value
+  dragSidebar.value = true
+  document.body.style.cursor = 'col-resize'
+  document.body.style.userSelect = 'none'
+  const move = (ev: MouseEvent) => { sidebarWidth.value = clamp(startW + (ev.clientX - startX), SIDEBAR_MIN, SIDEBAR_MAX) }
+  const up = () => {
+    dragSidebar.value = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    document.removeEventListener('mousemove', move)
+    document.removeEventListener('mouseup', up)
+    applyLayout()
+  }
+  document.addEventListener('mousemove', move)
+  document.addEventListener('mouseup', up)
+}
+// 抽屉高度拖拽（向上拖增大；仅展开态，handle v-if 已保证）
+const dragDrawer = ref(false)
+function drawerResizeDown(e: MouseEvent) {
+  if (drawerCollapsed.value) return
+  e.preventDefault()
+  const startY = e.clientY, startH = drawerHeight.value
+  dragDrawer.value = true
+  document.body.style.cursor = 'row-resize'
+  document.body.style.userSelect = 'none'
+  const move = (ev: MouseEvent) => { drawerHeight.value = clamp(startH + (startY - ev.clientY), DRAWER_MIN, DRAWER_MAX) }
+  const up = () => {
+    dragDrawer.value = false
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    document.removeEventListener('mousemove', move)
+    document.removeEventListener('mouseup', up)
+    applyLayout()
+  }
+  document.addEventListener('mousemove', move)
+  document.addEventListener('mouseup', up)
+}
 const themePop = ref(false)
 function pickTheme(id: string) { setTheme(id); themePop.value = false }
 const themeName = computed(() => {
@@ -377,7 +432,7 @@ const showWelcome = computed(() => {
     && Object.keys(state.installed).length === 0 && state.containers.length === 0
 })
 onMounted(() => {
-  initTheme(); initPwdPolicy(); loadContainers()
+  initTheme(); initPwdPolicy(); applyLayout(); loadContainers()
   onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
   initTrayNav() // 托盘菜单快速跳转（ui:navigate）
   initDaemonEvents() // 长驻进程通道（go run / go logs）
@@ -1107,6 +1162,8 @@ function initTrayNav() {
           </div>
         </div>
       </div>
+      <!-- 宽度拖拽（原型 §11.7②）：col-resize，双击回默认，localStorage 持久化 -->
+      <div class="sidebar-resizer" :class="{ dragging: dragSidebar }" title="⇔" @mousedown="sidebarResizeDown" @dblclick="sidebarWidth = 200; applyLayout()"></div>
     </aside>
     <main class="main">
       <!-- ═══ 引擎就绪度横幅（§5.1 首启检测 · 诚实降级：三条件独立，不做假检测）═══ -->
@@ -1607,7 +1664,10 @@ function initTrayNav() {
         </div>
       </div>
       <!-- 任务抽屉：真实 phpbox CLI 输出流（task:log/task:done 事件驱动）-->
-      <section class="drawer" :class="{ collapsed: drawerCollapsed }" v-if="state.task">
+      <!-- 高度拖拽（原型 §11.7②）：展开态可拉，双击回默认，localStorage 持久化 -->
+      <section class="drawer" :class="{ collapsed: drawerCollapsed }" :style="{ height: drawerHeight + 'px' }" v-if="state.task">
+        <div v-if="!drawerCollapsed" class="drawer-resizer" :class="{ dragging: dragDrawer }" title="⇕"
+             @mousedown="drawerResizeDown" @dblclick="drawerHeight = 260; applyLayout()"></div>
         <header class="drawer-head">
           <div class="drawer-left">
             <span class="drawer-dot" :class="state.task.phase"></span>

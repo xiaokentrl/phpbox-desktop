@@ -221,7 +221,6 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 /* ─── 任务抽屉 ─── */
 .drawer{border-top:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;height:260px;flex-shrink:0;animation:slideUp .2s ease-out}
 @keyframes slideUp{from{height:0;opacity:0}to{height:260px;opacity:1}}
-.drawer.collapsed{height:42px;overflow:hidden}
 .drawer-head{display:flex;align-items:center;justify-content:space-between;padding:0 14px;height:42px;flex-shrink:0;border-bottom:1px solid var(--border-2);background:var(--surface-2)}
 .drawer-left{display:flex;align-items:center;gap:10px;min-width:0}
 .drawer-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -353,3 +352,10 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .btn-icon:hover{color:var(--accent);background:var(--fill)}
 .site-root{cursor:pointer}
 .site-root:hover{color:var(--accent);text-decoration:underline dotted}
+
+/* ─── 布局拖拽（原型 §11.7②）─── */
+.sidebar{position:relative}
+.drawer-resizer{position:absolute;top:-3px;left:0;right:0;height:6px;cursor:row-resize;z-index:20;background:transparent;transition:background .15s}
+.drawer-resizer:hover,.drawer-resizer.dragging{background:var(--accent);opacity:.5}
+/* collapsed 优先于内联 height：折叠永远 42px */
+.drawer.collapsed{height:42px !important;overflow:hidden}
