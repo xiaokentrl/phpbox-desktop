@@ -358,6 +358,7 @@ const CMD_ITEMS: { labelKey: string; kbd: string; route?: Route; run?: () => voi
   { labelKey: 'nav.backup', kbd: '⌘8', route: 'backup' },
   { labelKey: 'nav.settings', kbd: '', route: 'settings' },
   { labelKey: 'nav.offline', kbd: '', route: 'offline' },
+  { labelKey: 'nav.terminal', kbd: '', route: 'terminal' },
   { labelKey: 'nav.overview', kbd: '⌘9', route: 'overview' },
   { labelKey: 'cmd.newSite', kbd: '', run: () => openSiteModal() },
   { labelKey: 'cmd.backup', kbd: '', run: () => { setRoute('backup'); backupNow() } },

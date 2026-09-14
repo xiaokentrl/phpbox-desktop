@@ -25,8 +25,17 @@ var (
 	termCtx     context.CancelFunc
 )
 
+// emitTerminalData 与 emitEvent/emitDaemon 同构的可注入边界（集成测试替身）。
+var emitTerminalData func(data string) = emitTerminalDataViaWails
+
+func emitTerminalDataViaWails(data string) {
+	if app := application.Get(); app != nil {
+		app.Event.Emit("terminal:data", data)
+	}
+}
+
 // TerminalStart 启动终端会话（$SHELL 固定为 bash/sh + TERM=xterm-256color）。
-// 已有会话时返回错误（前端应先 StopTerminal——同 daemon 单槽语义）。
+// 已有会话时返回错误（前端应先 TerminalStop——同 daemon 单槽语义）。
 func (t *Terminal) TerminalStart(dir string) error {
 	termMu.Lock()
 	defer termMu.Unlock()
@@ -52,21 +61,17 @@ func pumpTerminal(s *terminal.Session) {
 	for {
 		n, err := s.Read(buf)
 		if n > 0 {
-			if app := application.Get(); app != nil {
-				app.Event.Emit("terminal:data", string(buf[:n]))
-			}
+			emitTerminalData(string(buf[:n]))
 		}
 		if err != nil {
 			break
 		}
 	}
-	// shell 退出/读端关闭：清槽 + 广播终结（前端显示会话结束，不静默吞）
+	// shell 退出/读端关闭：清槽 + 广播终结标记（前端显示会话结束，不静默吞）
 	termMu.Lock()
 	termSession, termCtx = nil, nil
 	termMu.Unlock()
-	if app := application.Get(); app != nil {
-		app.Event.Emit("terminal:data", "\x1b[?25h\r\n\u001b[38;5;240m[会话结束]\u001b[0m\r\n")
-	}
+	emitTerminalData("\x1b[?25h\r\n\u001b[38;5;240m[会话结束]\u001b[0m\r\n")
 }
 
 // TerminalWrite 用户键入原样写入 PTY（回显由行规程做，绑定不加工）。

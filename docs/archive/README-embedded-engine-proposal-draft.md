@@ -473,3 +473,9 @@ phpbox-desktop/
 ```
 
 The important rule is that the embedded resource tree should mirror the original phpbox runtime layout as closely as possible. This preserves compatibility, avoids path bugs, and keeps the CLI usable outside the desktop UI.
+
+---
+
+## 归档闭案（2026-09-14）
+
+**状态：否决，不再重启。** 该草稿提出将 bash 引擎内嵌/打包进桌面应用的方向，已按 desktop-ui-spec §5.1 否决（GUI 不内嵌不代装引擎，bash 仓 `install.sh` 是引擎唯一安装事实来源）。后续实装全程遵循"spawn 外部 `phpbox` CLI + 文件即接口"架构并已稳定交付 v0.1 全量，验证该否决成立。本文件仅作历史参考保留；如未来引擎演进（Go 引擎期/server 模式），应基于新架构决策立项，而非复活本稿。
