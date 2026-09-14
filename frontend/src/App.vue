@@ -598,19 +598,19 @@ function extApply() {
   if (!m || !extDirty.value) return
   const adds = extAdds.value, removes = extRemoves.value
   const ops: { args: string[]; cli: string; label: string }[] = [
-    ...adds.map(e => ({ args: ['php', 'extension', 'add', m.version, e], cli: `phpbox php extension add ${m.version} ${e}`, label: `+${e}` })),
-    ...removes.map(e => ({ args: ['php', 'extension', 'remove', m.version, e], cli: `phpbox php extension remove ${m.version} ${e}`, label: `-${e}` })),
+    ...adds.map(e => ({ args: ['php', 'extension', 'add', m.version, e], cli: `phpbox php extension add ${m.version} ${e}`, label: `PHP 扩展 +${e}` })),
+    ...removes.map(e => ({ args: ['php', 'extension', 'remove', m.version, e], cli: `phpbox php extension remove ${m.version} ${e}`, label: `PHP 扩展 -${e}` })),
   ]
   closeModal()
   runExtOps(ops, 0)
 }
-function runExtOps(ops: { args: string[]; cli: string; label: string }[], i: number) {
-  if (i >= ops.length) { toastBus(t('task.done'), 'ok'); return }
+function runExtOps(ops: { args: string[]; cli: string; label: string }[], i: number, done?: () => void) {
+  if (i >= ops.length) { toastBus(t('task.done'), 'ok'); done?.(); return }
   const op = ops[i]
-  const ok = dispatchTask(`PHP 扩展 ${op.label}`, op.cli, op.args, {
+  const ok = dispatchTask(op.label, op.cli, op.args, {
     doneMsg: `${op.label} ✓`,
     fallback: [{ d: 400, lines: [`[INFO] 演示环境：${op.cli}`] }],
-    onDone: () => runExtOps(ops, i + 1), // 上一个成功才执行下一个；失败链条自然中断
+    onDone: () => runExtOps(ops, i + 1, done), // 上一个成功才执行下一个；失败链条自然中断
   })
   if (!ok) toastBus(t('task.busy'), 'err')
 }
@@ -907,6 +907,61 @@ async function openSiteRoot(s: { domain: string; root: string }) {
   if (!inWails()) { toastBus(t('bk.browserOnly'), 'info'); return }
   try { await OpenInFileManager(s.root) } catch (e) { toastBus(String(e), 'err', 5000) }
 }
+
+// ── 站点批量（§3.1）：选择集 + 批量 hosts / 批量删除（循环 spawn 真 CLI，链式顺序）──
+const siteSel = ref(new Set<string>())
+function toggleSite(domain: string) {
+  const s = new Set(siteSel.value)
+  s.has(domain) ? s.delete(domain) : s.add(domain)
+  siteSel.value = s
+}
+function toggleAllSites(e: Event) {
+  const on = (e.target as HTMLInputElement).checked
+  siteSel.value = on ? new Set(state.sites.map(s => s.domain)) : new Set()
+}
+// 批量 hosts：为选中站点中未解析的批量加解析（已解析的自然跳过——CLI 侧幂等，但少跑无害）
+function batchHosts() {
+  const domains = state.sites.filter(s => siteSel.value.has(s.domain) && !s.hosts).map(s => s.domain)
+  if (domains.length === 0) { toastBus(t('site.batch.noneHosts'), 'info'); return }
+  const ops = domains.map(d => ({
+    args: ['hosts', 'add', d] as string[],
+    cli: `phpbox hosts add ${d}`,
+    label: `${t('site.hosts.taskAdd')}·${d}`,
+  }))
+  siteSel.value = new Set()
+  runExtOps(ops, 0, () => loadSites())
+}
+// 批量删除：逐域名危险确认语义与单删一致（配置删除 + nginx 重载事务失败自动恢复；
+// 源码目录永不删——bash confirm_yes 在 spawn 无 tty 环境一律拒绝，这是 CLI 事实）
+function openBatchRemoveModal() {
+  const domains = state.sites.filter(s => siteSel.value.has(s.domain)).map(s => s.domain)
+  if (domains.length === 0) return
+  openDanger({
+    title: t('site.batch.removeTitle', { n: domains.length }),
+    description: domains.join(' · '),
+    warnings: [
+      { text: t('site.batch.warn.conf', { n: domains.length }) },
+      { text: t('site.batch.warn.order') },
+      { text: t('site.warn.source'), keep: true },
+      { text: t('site.warn.hosts'), keep: true },
+    ],
+    checkboxLabel: t('site.batch.check'),
+    inputLabel: t('mod.confirmInput'),
+    expect: String(domains.length),
+    placeholder: String(domains.length),
+    cliPreview: domains.map(d => `phpbox site remove ${d}`).join(' && '),
+    confirmLabel: t('site.batch.remove'),
+    onConfirm: () => {
+      const ops = domains.map(d => ({
+        args: ['site', 'remove', d] as string[],
+        cli: `phpbox site remove ${d}`,
+        label: `${t('site.confirmRemove')}·${d}`,
+      }))
+      siteSel.value = new Set()
+      runExtOps(ops, 0, () => loadSites())
+    },
+  })
+}
 function openSiteRemoveModal(domain: string) {
   openDanger({
     title: t('site.removeTitle', { domain }),
@@ -1202,9 +1257,23 @@ function initTrayNav() {
                 <div class="summary-item"><div class="summary-num" style="color:var(--ok)">{{ state.sites.filter(s => s.health === 'up').length }}</div><div class="summary-label">{{ t('sum.healthy') }}</div></div>
                 <div class="summary-item"><div class="summary-num">{{ state.env.NGINX_PORT }}</div><div class="summary-label">{{ t('sum.port') }}</div></div>
               </div>
+              <!-- 批量条（§3.1 批量）：全选后批量 hosts / 批量删除（循环 spawn 真 CLI，链式顺序执行） -->
+              <div v-if="siteSel.size > 0" class="batch-bar">
+                <span class="dim">{{ t('site.batch.selected', { n: siteSel.size }) }}</span>
+                <div class="row-actions">
+                  <button class="btn btn-sm" :disabled="taskRunning()" @click="batchHosts">{{ t('site.batch.hosts') }}</button>
+                  <button class="btn btn-sm btn-danger" :disabled="taskRunning()" @click="openBatchRemoveModal">{{ t('site.batch.remove') }}</button>
+                  <button class="btn btn-sm" @click="siteSel.clear()">{{ t('site.batch.clear') }}</button>
+                </div>
+              </div>
               <div class="table-wrap"><table>
-                <thead><tr><th>{{ t('th.domain') }}</th><th>{{ t('th.php') }}</th><th>{{ t('th.root') }}</th><th>{{ t('th.health') }}</th><th>{{ t('th.hosts') }}</th><th></th></tr></thead>
-                <tbody><tr v-for="s in state.sites" :key="s.domain">
+                <thead><tr>
+                  <th style="width:28px"><input type="checkbox" class="site-check"
+                    :checked="siteSel.size > 0 && siteSel.size === state.sites.length"
+                    @change="toggleAllSites($event)"></th>
+                  <th>{{ t('th.domain') }}</th><th>{{ t('th.php') }}</th><th>{{ t('th.root') }}</th><th>{{ t('th.health') }}</th><th>{{ t('th.hosts') }}</th><th></th></tr></thead>
+                <tbody><tr v-for="s in state.sites" :key="s.domain" :class="{ selected: siteSel.has(s.domain) }">
+                  <td><input type="checkbox" class="site-check" :checked="siteSel.has(s.domain)" @change="toggleSite(s.domain)"></td>
                   <td>
                     <div class="site-domain-cell">
                       <a class="site-domain" :title="t('site.openBrowser')" @click.prevent="openSiteInBrowser(s.domain)">

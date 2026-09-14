@@ -359,3 +359,8 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .drawer-resizer:hover,.drawer-resizer.dragging{background:var(--accent);opacity:.5}
 /* collapsed 优先于内联 height：折叠永远 42px */
 .drawer.collapsed{height:42px !important;overflow:hidden}
+
+/* ─── 站点批量选择（§3.1 批量）─── */
+.batch-bar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;margin-bottom:12px;border:1px solid var(--accent);border-radius:10px;background:var(--surface-2)}
+.site-check{accent-color:var(--accent);cursor:pointer}
+tbody tr.selected td{background:color-mix(in srgb, var(--accent) 8%, transparent)}
