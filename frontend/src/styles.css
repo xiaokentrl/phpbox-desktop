@@ -341,3 +341,7 @@ input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--a
 .bk-entry{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:3px 10px;border-radius:6px;word-break:break-all}
 .bk-entry.dir{opacity:.75}
 .bk-entry:not(.dir):hover{background:var(--fill)}
+
+/* ─── 密码显示策略（§3.10 设置安全组）─── */
+.pwd-policy-row{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:10px 0;border-top:1px solid var(--border)}
+.pwd-policy-row:first-of-type{border-top:none}

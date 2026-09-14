@@ -119,6 +119,12 @@ export const state = reactive({
   modal: null as InstallModal | DangerModal | ExtModal | SiteModal | null,
   palette: false, // 命令面板（⌘K）
   locale: (localStorage.getItem('phpbox-locale') || 'zh-CN') as Locale,
+  // 密码显示策略（§3.10 安全组，desktop-ui-spec-v2:137）：GUI 本地偏好。
+  // 不写 .env——bash 侧无此契约键（.env 只有 *_ROOT_PASSWORD），写进去是平行状态
+  pwdPolicy: {
+    showSec: 8,          // 点击显示后的自动掩码秒数
+    allowCopy: true,     // 是否允许 DSN 复制含明文密码
+  } as { showSec: number; allowCopy: boolean },
 })
 
 export function setRoute(r: Route) { state.route = r }
@@ -140,6 +146,21 @@ export function setAppLocale(l: Locale) {
 }
 export function initLocale() {
   document.documentElement.lang = state.locale
+}
+
+/* ─── 密码显示策略持久化（§3.10）：本地偏好，localStorage 非事实状态 ─── */
+export function initPwdPolicy() {
+  try {
+    const raw = localStorage.getItem('phpbox-pwd-policy')
+    if (!raw) return
+    const p = JSON.parse(raw)
+    if (typeof p?.showSec === 'number' && p.showSec >= 3 && p.showSec <= 300) state.pwdPolicy.showSec = p.showSec
+    if (typeof p?.allowCopy === 'boolean') state.pwdPolicy.allowCopy = p.allowCopy
+  } catch { /* 损坏回退默认 */ }
+}
+export function setPwdPolicy(patch: Partial<{ showSec: number; allowCopy: boolean }>) {
+  Object.assign(state.pwdPolicy, patch)
+  try { localStorage.setItem('phpbox-pwd-policy', JSON.stringify(state.pwdPolicy)) } catch { /* 忽略 */ }
 }
 
 /* ─── 弹窗 store：安装 / 危险确认（卸载等破坏性操作 §8.2 三条件）─── */

@@ -2,7 +2,7 @@
 // 应用壳 + 视图路由（阶段 0：内联视图；§22.1 晋升制——复用时抽组件）
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { t } from './i18n'
-import { state, setRoute, setTheme, setAppLocale, initTheme, clearTask, taskRunning, toastBus,
+import { state, setRoute, setTheme, setAppLocale, initTheme, initPwdPolicy, setPwdPolicy, clearTask, taskRunning, toastBus,
   openInstall, openDanger, openExt, openSiteModal, closeModal, pushNotif, notifUnread, markNotifsRead, clearNotifs,
   type Route, type ContainerRow } from './state'
 import { dispatchTask, inWails, onWailsReady } from './api/task'
@@ -167,7 +167,7 @@ async function revealPwd(svc: string, ver: string) {
     const p = await GetServicePassword(svc, ver)
     if (!p) return // 无密码（未装/无键）：不显示
     pwdShown.value = { ...pwdShown.value, [key]: p }
-    pwdTimers[key] = window.setTimeout(() => { delete pwdShown.value[key] }, 8000) // 8s 自动掩码（§3.3）
+    pwdTimers[key] = window.setTimeout(() => { delete pwdShown.value[key] }, state.pwdPolicy.showSec * 1000) // 自动掩码（§3.10 时长可调）
   } catch { /* 读取失败保持掩码 */ }
 }
 function pwdLabel(svc: string, ver: string): string {
@@ -178,9 +178,12 @@ function dsnOf(svc: string, ver: string): string {
   const c = credOf(svc, ver)
   if (!c) return ''
   const p = pwdShown.value[`${svc}/${ver}`]
-  if (svc === 'mysql') return `mysql -h127.0.0.1 -P${c.port} -u${c.user} -p${p ?? '***'}`
-  if (svc === 'pgsql') return `postgresql://${c.user}:${p ?? '***'}@127.0.0.1:${c.port}/postgres`
-  if (svc === 'redis') return `redis-cli -h 127.0.0.1 -p ${c.port} -a ${p ?? '***'}`
+  // 复制明文受 §3.10 策略控制：allowCopy=false 时复制的命令永远带掩码（屏幕显示不受影响）
+  const pass = p && state.pwdPolicy.allowCopy ? p : '***'
+  if (svc === 'mysql') return `mysql -h127.0.0.1 -P${c.port} -u${c.user} -p${pass}`
+  if (svc === 'pgsql') return `postgresql://${c.user}:${pass}@127.0.0.1:${c.port}/postgres`
+  if (svc === 'redis') return `redis-cli -h 127.0.0.1 -p ${c.port} -a ${pass}`
+  if (svc === 'nginx') return `http://localhost:${c.port}`
   return ''
 }
 function openUninstallModal(kind: string, ver: string) {
@@ -373,7 +376,7 @@ const showWelcome = computed(() => {
     && Object.keys(state.installed).length === 0 && state.containers.length === 0
 })
 onMounted(() => {
-  initTheme(); loadContainers()
+  initTheme(); initPwdPolicy(); loadContainers()
   onWailsReady(() => { loadPresence(); loadBackups(); loadOffline(); loadSites(); loadGoProjects() })
   initTrayNav() // 托盘菜单快速跳转（ui:navigate）
   initDaemonEvents() // 长驻进程通道（go run / go logs）
@@ -1516,13 +1519,37 @@ function initTrayNav() {
             </template>
           </template>
           <template v-else-if="state.route === 'settings'">
-            <header class="view-header"><div><h1>{{ t('nav.settings') }}</h1><p class="view-sub">Theme · Language · Layout</p></div></header>
+            <header class="view-header"><div><h1>{{ t('nav.settings') }}</h1><p class="view-sub">Theme · Language · Security · Layout</p></div></header>
             <div class="card" style="margin-bottom:16px">
               <h3 style="font-size:14px;font-weight:600;margin-bottom:14px">{{ state.locale === 'en-US' ? 'Theme' : '主题' }}</h3>
               <div class="quick-picks">
                 <button v-for="th in THEMES" :key="th.id" class="pick" :class="{ selected: state.theme === th.id }" @click="setTheme(th.id)">
                   {{ state.locale === 'en-US' ? th.en : th.zh }}
                 </button>
+              </div>
+            </div>
+            <!-- 密码显示策略（§3.10 安全组）：GUI 本地偏好（localStorage）——bash .env 无此契约键，不写 .env 造平行状态 -->
+            <div class="card" style="margin-bottom:16px">
+              <h3 style="font-size:14px;font-weight:600;margin-bottom:14px">{{ t('pwd.title') }}</h3>
+              <div class="pwd-policy-row">
+                <div>
+                  <div>{{ t('pwd.showSec') }}</div>
+                  <p class="view-sub" style="margin-top:2px">{{ t('pwd.showSecHint') }}</p>
+                </div>
+                <div class="quick-picks" style="justify-content:flex-end">
+                  <button v-for="n in [3, 8, 30, 60]" :key="n" class="pick" :class="{ selected: state.pwdPolicy.showSec === n }"
+                          @click="setPwdPolicy({ showSec: n })">{{ n }}s</button>
+                </div>
+              </div>
+              <div class="pwd-policy-row">
+                <div>
+                  <div>{{ t('pwd.allowCopy') }}</div>
+                  <p class="view-sub" style="margin-top:2px">{{ t('pwd.allowCopyHint') }}</p>
+                </div>
+                <div class="quick-picks" style="justify-content:flex-end">
+                  <button class="pick" :class="{ selected: state.pwdPolicy.allowCopy }" @click="setPwdPolicy({ allowCopy: true })">{{ t('pwd.on') }}</button>
+                  <button class="pick" :class="{ selected: !state.pwdPolicy.allowCopy }" @click="setPwdPolicy({ allowCopy: false })">{{ t('pwd.off') }}</button>
+                </div>
               </div>
             </div>
             <div class="card" style="margin-bottom:16px">
